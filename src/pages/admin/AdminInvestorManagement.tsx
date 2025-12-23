@@ -1,0 +1,307 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { AdminLayout } from "@/components/AdminLayout";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pencil, Trash2, Plus, Upload } from "lucide-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { CreateEditInvestorDialog } from "@/components/admin/CreateEditInvestorDialog";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { format } from "date-fns";
+
+const AdminInvestorManagement = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [editingInvestor, setEditingInvestor] = useState<any>(null);
+  const [creatingInvestor, setCreatingInvestor] = useState(false);
+  const [deletingInvestorId, setDeletingInvestorId] = useState<string | null>(
+    null
+  );
+
+  // Fetch all investor records (via investments table)
+  const { data: investors, isLoading } = useQuery({
+    queryKey: ["admin-investors"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("investments")
+        .select(
+          `
+          id,
+          user_id,
+          amount,
+          roi,
+          status,
+          start_date,
+          created_at,
+          plan_id,
+          profiles(name, email, balance),
+          investment_plans(name, roi_percentage)
+        `
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Delete investor mutation
+  const deleteInvestorMutation = useMutation({
+    mutationFn: async (investorId: string) => {
+      const { error } = await supabase
+        .from("investments")
+        .delete()
+        .eq("id", investorId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      toast({
+        title: "Success",
+        description: "Investor record deleted successfully",
+      });
+      setDeletingInvestorId(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: "Failed to delete investor: " + error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <AdminLayout>
+        <div>Loading...</div>
+      </AdminLayout>
+    );
+  }
+
+  const totalInvestorAmount = investors?.reduce(
+    (sum: number, inv: any) => sum + Number(inv.amount),
+    0
+  ) || 0;
+
+  const totalROI = investors?.reduce(
+    (sum: number, inv: any) => sum + Number(inv.roi),
+    0
+  ) || 0;
+
+  return (
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Investor Management</h1>
+            <p className="text-muted-foreground mt-2">
+              Upload, manage, and track investor data
+            </p>
+          </div>
+          <Button onClick={() => setCreatingInvestor(true)} size="lg">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Investor
+          </Button>
+        </div>
+
+        {investors && investors.length > 0 ? (
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Investor Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Investment Amount</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>ROI</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {investors.map((investor: any) => (
+                  <TableRow key={investor.id}>
+                    <TableCell className="font-semibold">
+                      {investor.profiles?.name || "Unknown"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {investor.profiles?.email || "N/A"}
+                    </TableCell>
+                    <TableCell className="font-semibold">
+                      ${Number(investor.amount).toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {investor.investment_plans?.name || "Custom"}
+                    </TableCell>
+                    <TableCell className="font-bold text-success">
+                      ${Number(investor.roi).toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {investor.start_date
+                        ? format(new Date(investor.start_date), "MMM dd, yyyy")
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          investor.status === "active" ? "default" : "secondary"
+                        }
+                      >
+                        {investor.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingInvestor(investor)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeletingInvestorId(investor.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <p className="text-muted-foreground mb-4">No investors added yet</p>
+              <Button onClick={() => setCreatingInvestor(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Your First Investor
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Investor statistics */}
+        {investors && investors.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Investors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{investors.length}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Investment
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  ${totalInvestorAmount.toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total ROI Accrued
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-success">
+                  ${totalROI.toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Active Investors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {investors.filter((i: any) => i.status === "active").length}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Info Card */}
+        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              How to Upload Investor Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>
+              • Click "Add Investor" to manually add a new investor record
+            </p>
+            <p>
+              • Fill in the investor's name, email, investment amount, and ROI
+              percentage
+            </p>
+            <p>
+              • Select an investment plan or create a custom ROI percentage
+            </p>
+            <p>
+              • Changes automatically reflect in the user's dashboard in real-time
+            </p>
+            <p>
+              • You can edit or delete investor records at any time
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <CreateEditInvestorDialog
+        investor={editingInvestor}
+        open={!!editingInvestor || creatingInvestor}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingInvestor(null);
+            setCreatingInvestor(false);
+          }
+        }}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deletingInvestorId}
+        onOpenChange={(open) => !open && setDeletingInvestorId(null)}
+        onConfirm={() =>
+          deletingInvestorId && deleteInvestorMutation.mutate(deletingInvestorId)
+        }
+        title="Delete Investor Record"
+        description="Are you sure you want to delete this investor record? This action cannot be undone."
+      />
+    </AdminLayout>
+  );
+};
+
+export default AdminInvestorManagement;

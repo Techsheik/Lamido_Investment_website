@@ -1,0 +1,183 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { TrendingUp } from "lucide-react";
+
+const Investments = () => {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/auth");
+    }
+  }, [user, loading, navigate]);
+
+  const { data: investments, isLoading } = useQuery({
+    queryKey: ["investments", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("investments")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  if (loading || isLoading || !user) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
+  const totalROI = investments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(inv.roi) / 100), 0) || 0;
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold">My Investments</h1>
+            <p className="text-muted-foreground mt-2">Track and manage your investment portfolio</p>
+          </div>
+          <Button onClick={() => navigate("/services")}>
+            <TrendingUp className="h-4 w-4 mr-2" />
+            New Investment
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Invested
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">${totalInvested.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Expected Returns
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-success">
+                ${totalROI.toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Active Plans
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {investments?.filter(inv => inv.status === "active").length || 0}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {investments && investments.length > 0 ? (
+          <div className="grid gap-6">
+            {investments.map((investment) => {
+              const startDate = new Date(investment.start_date);
+              const endDate = new Date(investment.end_date);
+              const now = new Date();
+              const totalDuration = endDate.getTime() - startDate.getTime();
+              const elapsed = now.getTime() - startDate.getTime();
+              const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+              const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+              return (
+                <Card key={investment.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle>{investment.type}</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Started {startDate.toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge variant={investment.status === "active" ? "default" : "secondary"}>
+                        {investment.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Units</p>
+                        <p className="text-xl font-bold">{investment.units || 1} unit{(investment.units || 1) !== 1 ? 's' : ''}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Amount</p>
+                        <p className="text-xl font-bold">${Number(investment.amount).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Weekly ROI</p>
+                        <p className="text-xl font-bold text-success">{investment.roi}%</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Weekly Return</p>
+                        <p className="text-xl font-bold text-success">
+                          ${(Number(investment.amount) * (Number(investment.roi) / 100)).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {investment.status === "active" && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-medium">
+                            {daysRemaining > 0 ? `${daysRemaining} days remaining` : "Matured"}
+                          </span>
+                        </div>
+                        <Progress value={progress} />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="text-center py-12">
+              <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground mb-4">No investments yet. Start your investment journey today!</p>
+              <Button onClick={() => navigate("/services")}>
+                Browse Investment Plans
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
+export default Investments;

@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Gold and Dark Blue Theme - Matching Logo */
+    --background: 222 50% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 43 96% 56%;
+    --primary-foreground: 222 50% 8%;
+    --primary-glow: 43 96% 66%;
+    
+    --secondary: 43 96% 56%;
+    --secondary-foreground: 222 50% 8%;
+    --secondary-glow: 43 96% 66%;
+
+    --muted: 222 33% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 45 100% 50%;
+    --accent-foreground: 222 50% 8%;
+    --accent-glow: 45 100% 60%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 33% 20%;
+    --input: 222 33% 12%;
+    --ring: 43 96% 56%;
+
+    --radius: 0.75rem;
+    
+    /* Elegant Gradients - Gold and Dark Blue */
+    --gradient-primary: linear-gradient(135deg, hsl(43 96% 56%), hsl(45 100% 50%));
+    --gradient-secondary: linear-gradient(135deg, hsl(43 96% 56%), hsl(45 100% 50%));
+    --gradient-hero: linear-gradient(135deg, hsl(43 96% 56% / 0.15), hsl(45 100% 50% / 0.1));
+    --gradient-card: linear-gradient(145deg, hsl(222 47% 10%), hsl(222 33% 12%));
+    
+    /* Glow Effects - Gold */
+    --shadow-glow-primary: 0 0 20px hsl(43 96% 56% / 0.3);
+    --shadow-glow-secondary: 0 0 20px hsl(43 96% 56% / 0.3);
+    --shadow-glow-accent: 0 0 20px hsl(45 100% 50% / 0.3);
+    --shadow-elegant: 0 10px 40px -10px hsl(43 96% 56% / 0.2);
+
+    /* Sidebar Dark Theme - Gold and Dark Blue */
+    --sidebar-background: 222 50% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 43 96% 56%;
+    --sidebar-primary-foreground: 222 50% 8%;
+    --sidebar-accent: 222 33% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 33% 12%;
+    --sidebar-ring: 43 96% 56%;
+  }
+
+  .dark {
+    --background: 222 50% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 43 96% 56%;
+    --primary-foreground: 222 50% 8%;
+
+    --secondary: 43 96% 56%;
+    --secondary-foreground: 222 50% 8%;
+
+    --muted: 222 33% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 45 100% 50%;
+    --accent-foreground: 222 50% 8%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 33% 20%;
+    --input: 222 33% 12%;
+    --ring: 43 96% 56%;
+    
+    --sidebar-background: 222 50% 6%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 43 96% 56%;
+    --sidebar-primary-foreground: 222 50% 8%;
+    --sidebar-accent: 222 33% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 33% 12%;
+    --sidebar-ring: 43 96% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  /* Card with elegant gradient background */
+  .card-gradient {
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Glowing hover effect for buttons */
+  .btn-glow-primary:hover {
+    box-shadow: var(--shadow-glow-primary);
+  }
+
+  .btn-glow-secondary:hover {
+    box-shadow: var(--shadow-glow-secondary);
+  }
+
+  .btn-glow-accent:hover {
+    box-shadow: var(--shadow-glow-accent);
+  }
+
+  /* Neumorphic card effect */
+  .card-neumorphic {
+    background: hsl(var(--card));
+    box-shadow: 
+      8px 8px 16px hsl(222 84% 3% / 0.4),
+      -8px -8px 16px hsl(222 47% 12% / 0.1);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Smooth transitions */
+  .transition-glow {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
