@@ -36,8 +36,8 @@ const Payment = () => {
       const { data } = await supabase
         .from("platform_settings")
         .select("*")
-        .in("setting_key", ["admin_bank_account", "admin_bank_name", "admin_phone"])
-        .limit(3);
+        .in("setting_key", ["admin_bank_account", "admin_bank_name", "admin_bank_account_name", "admin_phone"])
+        .limit(4);
       
       const settings: any = {};
       data?.forEach(item => {
@@ -47,7 +47,8 @@ const Payment = () => {
       return {
         accountNumber: settings["admin_bank_account"] || "6508733555",
         bankName: settings["admin_bank_name"] || "Opay",
-        adminPhone: settings["admin_phone"] || "07080431208",
+        accountName: settings["admin_bank_account_name"] || "Lamido resourses enterprises",
+        adminPhone: settings["admin_phone"] || "2349055555555",
       };
     },
   });
@@ -253,6 +254,27 @@ const Payment = () => {
                   }
                 >
                   {copiedField === "Bank Name" ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              {/* Account Name */}
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg border">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Account Name</Label>
+                  <p className="text-xl font-bold mt-1">{paymentSettings?.accountName}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    copyToClipboard(paymentSettings?.accountName || "", "Account Name")
+                  }
+                >
+                  {copiedField === "Account Name" ? (
                     <Check className="h-4 w-4" />
                   ) : (
                     <Copy className="h-4 w-4" />
