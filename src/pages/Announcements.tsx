@@ -73,7 +73,16 @@ const Announcements = () => {
         ) : (
           <div className="space-y-4">
             {announcements?.map((announcement: any) => (
-              <Card key={announcement.id} className="hover:shadow-lg transition-shadow">
+              <Card key={announcement.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                {announcement.image_url && (
+                  <div className="w-full h-64 overflow-hidden bg-muted">
+                    <img 
+                      src={announcement.image_url} 
+                      alt={announcement.title} 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
                 <CardHeader>
                   <CardTitle className="text-2xl">{announcement.title}</CardTitle>
                   <CardDescription>

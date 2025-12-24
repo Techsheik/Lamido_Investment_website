@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Plus, Edit2 } from "lucide-react";
+import { Trash2, Plus, Edit2, Upload, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 const AdminAnnouncements = () => {
@@ -19,7 +19,9 @@ const AdminAnnouncements = () => {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ title: "", content: "" });
+  const [formData, setFormData] = useState({ title: "", content: "", image: null as File | null });
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const { data: announcements, isLoading } = useQuery({
     queryKey: ["admin-announcements"],
@@ -39,9 +41,25 @@ const AdminAnnouncements = () => {
         throw new Error("Title and content are required");
       }
 
+      let imageUrl = null;
+      if (formData.image) {
+        const fileName = `${Date.now()}-${formData.image.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("announcements")
+          .upload(`${user.id}/${fileName}`, formData.image);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data } = supabase.storage
+          .from("announcements")
+          .getPublicUrl(`${user.id}/${fileName}`);
+        imageUrl = data.publicUrl;
+      }
+
       const { error } = await supabase.from("announcements").insert({
         title: formData.title,
         content: formData.content,
+        image_url: imageUrl,
         created_by: user.id,
       });
 
@@ -50,7 +68,8 @@ const AdminAnnouncements = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
       toast({ title: "Success", description: "Announcement created" });
-      setFormData({ title: "", content: "" });
+      setFormData({ title: "", content: "", image: null });
+      setImagePreview(null);
       setIsDialogOpen(false);
     },
     onError: (error: any) => {
@@ -69,13 +88,31 @@ const AdminAnnouncements = () => {
         throw new Error("Title and content are required");
       }
 
+      let imageUrl = null;
+      if (formData.image) {
+        const fileName = `${Date.now()}-${formData.image.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("announcements")
+          .upload(`${user?.id}/${fileName}`, formData.image);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data } = supabase.storage
+          .from("announcements")
+          .getPublicUrl(`${user?.id}/${fileName}`);
+        imageUrl = data.publicUrl;
+      }
+
+      const updateData: any = {
+        title: formData.title,
+        content: formData.content,
+        updated_at: new Date().toISOString(),
+      };
+      if (imageUrl) updateData.image_url = imageUrl;
+
       const { error } = await supabase
         .from("announcements")
-        .update({
-          title: formData.title,
-          content: formData.content,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", editingId);
 
       if (error) throw error;
@@ -83,7 +120,8 @@ const AdminAnnouncements = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
       toast({ title: "Success", description: "Announcement updated" });
-      setFormData({ title: "", content: "" });
+      setFormData({ title: "", content: "", image: null });
+      setImagePreview(null);
       setEditingId(null);
       setIsDialogOpen(false);
     },
@@ -117,12 +155,28 @@ const AdminAnnouncements = () => {
   const handleOpenDialog = (announcement?: any) => {
     if (announcement) {
       setEditingId(announcement.id);
-      setFormData({ title: announcement.title, content: announcement.content });
+      setFormData({ title: announcement.title, content: announcement.content, image: null });
+      setImagePreview(announcement.image_url);
     } else {
       setEditingId(null);
-      setFormData({ title: "", content: "" });
+      setFormData({ title: "", content: "", image: null });
+      setImagePreview(null);
     }
     setIsDialogOpen(true);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "Error", description: "Image must be less than 5MB", variant: "destructive" });
+        return;
+      }
+      setFormData({ ...formData, image: file });
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = () => {
@@ -189,6 +243,9 @@ const AdminAnnouncements = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {announcement.image_url && (
+                    <img src={announcement.image_url} alt={announcement.title} className="w-full h-48 object-cover rounded-lg mb-4" />
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{announcement.content}</p>
                 </CardContent>
               </Card>
@@ -216,6 +273,42 @@ const AdminAnnouncements = () => {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="image">Image (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById("image")?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose Image
+                </Button>
+                {imagePreview && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFormData({ ...formData, image: null });
+                      setImagePreview(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {imagePreview && (
+                <img src={imagePreview} alt="Preview" className="w-full h-32 object-cover rounded-lg" />
+              )}
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="content">Content</Label>
               <Textarea
                 id="content"
@@ -231,7 +324,7 @@ const AdminAnnouncements = () => {
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || uploading}
               >
                 {editingId ? "Update" : "Create"}
               </Button>
