@@ -12,6 +12,17 @@ import { SignupSuccessDialog } from "@/components/SignupSuccessDialog";
 import { supabase } from "@/integrations/supabase/client";
 import logo from "@/assets/logo.png";
 
+const getFriendlyError = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || "";
+  if (msg.includes("invalid") && msg.includes("credential")) return "Email or password is incorrect";
+  if (msg.includes("user already")) return "An account with this email already exists";
+  if (msg.includes("email not confirmed")) return "Please confirm your email before logging in";
+  if (msg.includes("database error")) return "Unable to process your request. Please try again.";
+  if (msg.includes("failed to save")) return "Unable to save your information. Please try again.";
+  if (msg.includes("network")) return "Network connection error. Please try again.";
+  return error?.message || "Something went wrong. Please try again.";
+};
+
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -79,7 +90,7 @@ const Auth = () => {
         if (error) {
           toast({
             title: "Login Failed",
-            description: error.message,
+            description: getFriendlyError(error),
             variant: "destructive",
           });
         } else {
@@ -116,7 +127,7 @@ const Auth = () => {
         if (error) {
           toast({
             title: "Sign Up Failed",
-            description: error.message,
+            description: getFriendlyError(error),
             variant: "destructive",
           });
         } else if (data?.user) {

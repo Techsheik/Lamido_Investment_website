@@ -8,6 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 
+const getFriendlyError = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || "";
+  if (msg.includes("user")) return "Email address not found";
+  if (msg.includes("network")) return "Network connection error. Please try again.";
+  if (msg.includes("error")) return "Unable to send reset link. Please try again.";
+  return error?.message || "Something went wrong. Please try again.";
+};
+
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,7 +46,7 @@ const ForgotPassword = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to send reset email",
+        description: getFriendlyError(error),
         variant: "destructive",
       });
     } finally {

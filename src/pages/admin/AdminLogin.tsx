@@ -9,6 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Home, Loader2 } from "lucide-react";
 
+const getFriendlyError = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || "";
+  if (msg.includes("invalid") && msg.includes("credential")) return "Email or password is incorrect";
+  if (msg.includes("access denied")) return "Admin privileges required. Contact support.";
+  if (msg.includes("network")) return "Network connection error. Please try again.";
+  return error?.message || "Something went wrong. Please try again.";
+};
+
 const AdminLogin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,7 +59,7 @@ const AdminLogin = () => {
     } catch (error: any) {
       toast({
         title: "Login failed",
-        description: error.message,
+        description: getFriendlyError(error),
         variant: "destructive",
       });
     } finally {

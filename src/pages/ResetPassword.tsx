@@ -7,6 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
+const getFriendlyError = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || "";
+  if (msg.includes("password") && msg.includes("match")) return "Passwords do not match";
+  if (msg.includes("6 characters")) return "Password must be at least 6 characters";
+  if (msg.includes("network")) return "Network connection error. Please try again.";
+  return error?.message || "Something went wrong. Please try again.";
+};
+
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -65,7 +73,7 @@ const ResetPassword = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getFriendlyError(error),
         variant: "destructive",
       });
     } finally {
