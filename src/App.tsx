@@ -31,7 +31,9 @@ import AdminInvestorManagement from "./pages/admin/AdminInvestorManagement";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminManagement from "./pages/admin/AdminManagement";
 import AdminTransactionProofs from "./pages/admin/AdminTransactionProofs";
+import AdminComplaints from "./pages/admin/AdminComplaints";
 import Announcements from "./pages/Announcements";
+import Complaints from "./pages/Complaints";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 
@@ -62,6 +64,7 @@ const App = () => (
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/payment" element={<Payment />} />
               <Route path="/announcements" element={<Announcements />} />
+              <Route path="/complaints" element={<Complaints />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsers />} />
@@ -74,6 +77,7 @@ const App = () => (
               <Route path="/admin/announcements" element={<AdminAnnouncements />} />
               <Route path="/admin/management" element={<AdminManagement />} />
               <Route path="/admin/transaction-proofs" element={<AdminTransactionProofs />} />
+              <Route path="/admin/complaints" element={<AdminComplaints />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

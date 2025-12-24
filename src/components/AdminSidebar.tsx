@@ -11,6 +11,7 @@ import {
   Megaphone,
   Shield,
   FileCheck,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,6 +32,7 @@ const items = [
   { title: "Transactions", url: "/admin/transactions", icon: Receipt },
   { title: "Transaction Proofs", url: "/admin/transaction-proofs", icon: FileCheck },
   { title: "Announcements", url: "/admin/announcements", icon: Megaphone },
+  { title: "Complaints", url: "/admin/complaints", icon: MessageSquare },
   { title: "Admin Management", url: "/admin/management", icon: Shield },
   { title: "Investor Management", url: "/admin/investor-management", icon: Briefcase },
   { title: "Plan Builder", url: "/admin/plan-builder", icon: Package },
