@@ -28,7 +28,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("user_code")
+        .select("user_code, referral_code, balance")
         .eq("id", user.id)
         .maybeSingle();
       return data;

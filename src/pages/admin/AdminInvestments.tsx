@@ -20,20 +20,47 @@ const AdminInvestments = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("investments")
-        .select(`
-          *,
-          profiles(name, user_code, balance)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error("Error fetching investments:", error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        console.log("No investments found");
+        return [];
+      }
+
+      const userIds = [...new Set(data.map((inv: any) => inv.user_id))];
+      const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, name, user_code, balance, weekly_roi_percentage")
+        .in("id", userIds);
+
+      if (profileError) {
+        console.error("Error fetching profiles:", profileError);
+        return data;
+      }
+
+      const profileMap = profiles?.reduce((acc: any, p: any) => {
+        acc[p.id] = p;
+        return acc;
+      }, {}) || {};
+
+      return data.map((inv: any) => ({
+        ...inv,
+        profiles: profileMap[inv.user_id] || null,
+      }));
     },
   });
 
   const completeInvestmentMutation = useMutation({
     mutationFn: async (investment: any) => {
-      // Update investment status
+      const weeklyRoiPercentage = investment.profiles?.weekly_roi_percentage || 10;
+      const roiAmount = Number(investment.amount) * (Number(weeklyRoiPercentage) / 100);
+
       const { error: invError } = await supabase
         .from("investments")
         .update({ status: "completed" })
@@ -41,8 +68,7 @@ const AdminInvestments = () => {
 
       if (invError) throw invError;
 
-      // Add ROI to user balance
-      const newBalance = Number(investment.profiles.balance) + Number(investment.roi);
+      const newBalance = Number(investment.profiles.balance) + roiAmount;
       const { error: balanceError } = await supabase
         .from("profiles")
         .update({ balance: newBalance })
@@ -88,7 +114,7 @@ const AdminInvestments = () => {
                 <TableHead>User Code</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>ROI</TableHead>
+                <TableHead>Weekly ROI (%)</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>Status</TableHead>
@@ -96,40 +122,54 @@ const AdminInvestments = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {investments?.map((investment: any) => (
-                <TableRow key={investment.id}>
-                  <TableCell>{investment.profiles?.name}</TableCell>
-                  <TableCell className="font-mono">{investment.profiles?.user_code}</TableCell>
-                  <TableCell className="capitalize">{investment.type}</TableCell>
-                  <TableCell>${Number(investment.amount).toFixed(2)}</TableCell>
-                  <TableCell>${Number(investment.roi).toFixed(2)}</TableCell>
-                  <TableCell>{investment.duration} days</TableCell>
-                  <TableCell>{format(new Date(investment.start_date), "MMM dd, yyyy")}</TableCell>
-                  <TableCell>
-                    <Badge variant={investment.status === "active" ? "default" : "secondary"}>
-                      {investment.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingInvestment(investment)}
-                      disabled={investment.status === "completed"}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => completeInvestmentMutation.mutate(investment)}
-                      disabled={investment.status === "completed"}
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                    </Button>
+              {investments && investments.length > 0 ? (
+                investments.map((investment: any) => (
+                  <TableRow key={investment.id}>
+                    <TableCell>{investment.profiles?.name}</TableCell>
+                    <TableCell className="font-mono">{investment.profiles?.user_code}</TableCell>
+                    <TableCell className="capitalize">{investment.type}</TableCell>
+                    <TableCell>${Number(investment.amount).toFixed(2)}</TableCell>
+                    <TableCell>{Number(investment.profiles?.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
+                    <TableCell>{investment.duration} days</TableCell>
+                    <TableCell>{format(new Date(investment.start_date), "MMM dd, yyyy")}</TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={
+                          investment.status === "active" ? "default" : 
+                          investment.status === "pending" ? "secondary" : 
+                          "outline"
+                        }
+                      >
+                        {investment.status.toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingInvestment(investment)}
+                        disabled={investment.status === "completed"}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => completeInvestmentMutation.mutate(investment)}
+                        disabled={investment.status === "completed"}
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    No investments found
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </div>

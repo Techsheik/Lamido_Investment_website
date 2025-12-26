@@ -83,7 +83,7 @@ const AdminTransactions = () => {
 
       if (error) throw error;
 
-      // If approved deposit, add to user balance
+      // If approved deposit, add to user balance and activate pending investment
       if (status === "approved" && transaction.type === "deposit") {
         const currentBalance = Number(transaction.profiles?.balance || 0);
         const newBalance = currentBalance + Number(transaction.amount);
@@ -94,6 +94,20 @@ const AdminTransactions = () => {
           .eq("id", transaction.user_id);
 
         if (balanceError) throw balanceError;
+
+        // Activate pending investment - reset dates so progress starts from 0%
+        const now = new Date();
+        const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+
+        await supabase
+          .from("investments")
+          .update({
+            status: "active",
+            start_date: now.toISOString(),
+            end_date: endDate.toISOString(),
+          })
+          .eq("user_id", transaction.user_id)
+          .eq("status", "pending");
       }
 
       // If approved withdrawal, deduct from user balance
@@ -112,6 +126,9 @@ const AdminTransactions = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       const message = variables.status === "approved" 
         ? variables.transaction.type === "withdrawal"
           ? "Withdrawal approved and balance deducted"

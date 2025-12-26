@@ -7,27 +7,49 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Download, CheckCircle, XCircle } from "lucide-react";
+import { Download, CheckCircle, XCircle, Eye, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 const AdminTransactionProofs = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [viewingProof, setViewingProof] = useState<any>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const { data: proofs, isLoading } = useQuery({
     queryKey: ["admin-transaction-proofs"],
     queryFn: async () => {
       const { data } = await supabase
         .from("transaction_proofs")
-        .select(`
-          *,
-          profiles:user_id (id, name, email)
-        `)
+        .select("*")
         .order("upload_date", { ascending: false });
 
-      return data || [];
+      if (!data || data.length === 0) return data || [];
+
+      const userIds = [...new Set(data.map((p: any) => p.user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, name, email, user_code")
+        .in("id", userIds);
+
+      const profileMap = profiles?.reduce((acc: any, p: any) => {
+        acc[p.id] = p;
+        return acc;
+      }, {}) || {};
+
+      return data.map((p: any) => ({
+        ...p,
+        profiles: profileMap[p.user_id] || null,
+      }));
     },
   });
 
@@ -43,13 +65,36 @@ const AdminTransactionProofs = () => {
 
       if (error) throw error;
 
-      // Also update the associated transaction status
+      // Also update the associated transaction status and activate investment
       const proof = proofs?.find((p: any) => p.id === proofId);
       if (proof?.transaction_id) {
         await supabase
           .from("transactions")
           .update({ status: "completed" })
           .eq("id", proof.transaction_id);
+
+        // Get transaction details to find user_id
+        const { data: transactionData } = await supabase
+          .from("transactions")
+          .select("user_id, amount")
+          .eq("id", proof.transaction_id)
+          .single();
+
+        if (transactionData?.user_id) {
+          // Activate pending investment - reset dates so progress starts from 0%
+          const now = new Date();
+          const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+
+          await supabase
+            .from("investments")
+            .update({
+              status: "active",
+              start_date: now.toISOString(),
+              end_date: endDate.toISOString(),
+            })
+            .eq("user_id", transactionData.user_id)
+            .eq("status", "pending");
+        }
       }
     },
     onSuccess: () => {
@@ -93,6 +138,25 @@ const AdminTransactionProofs = () => {
       setRejectingId(null);
     },
   });
+
+  const viewFile = async (filePath: string, proof: any) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("transaction-proofs")
+        .createSignedUrl(filePath, 3600);
+
+      if (error) throw error;
+
+      setViewingProof(proof);
+      setPreviewUrl(data.signedUrl);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to load file preview",
+        variant: "destructive",
+      });
+    }
+  };
 
   const downloadFile = async (filePath: string, fileName: string) => {
     try {
@@ -160,14 +224,24 @@ const AdminTransactionProofs = () => {
                     <TableCell className="font-medium">{proof.profiles?.name || "Unknown"}</TableCell>
                     <TableCell className="text-sm">{proof.profiles?.email}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => downloadFile(proof.file_path, proof.file_name)}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => viewFile(proof.file_path, proof)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadFile(proof.file_path, proof.file_name)}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Download
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -253,6 +327,118 @@ const AdminTransactionProofs = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Proof Preview Dialog */}
+      <Dialog open={!!viewingProof} onOpenChange={(open) => !open && setViewingProof(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payment Proof - {viewingProof?.profiles?.name}</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* User Details */}
+            <div className="p-4 bg-muted rounded-lg space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">User Name</p>
+                  <p className="font-semibold">{viewingProof?.profiles?.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">User Code</p>
+                  <p className="font-semibold font-mono text-primary">{viewingProof?.profiles?.user_code || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Email</p>
+                  <p className="font-semibold text-sm">{viewingProof?.profiles?.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">File Name</p>
+                  <p className="font-semibold text-sm">{viewingProof?.file_name}</p>
+                </div>
+              </div>
+              <div className="pt-2 border-t">
+                <p className="text-sm text-muted-foreground">Uploaded</p>
+                <p className="font-semibold text-sm">
+                  {viewingProof?.upload_date && formatDistanceToNow(new Date(viewingProof.upload_date), { addSuffix: true })}
+                </p>
+              </div>
+            </div>
+
+            {/* File Preview */}
+            {previewUrl && (
+              <div className="border rounded-lg p-4 bg-muted/30">
+                {viewingProof?.file_type?.startsWith("image/") ? (
+                  <img 
+                    src={previewUrl} 
+                    alt="Payment proof" 
+                    className="w-full h-auto rounded-lg max-h-96 object-cover"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-96 bg-muted rounded-lg">
+                    <div className="text-center">
+                      <p className="text-muted-foreground mb-2">PDF Preview</p>
+                      <a 
+                        href={previewUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-sm"
+                      >
+                        Click to open PDF in new tab
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end">
+              {viewingProof?.status === "pending" && (
+                <>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      setViewingProof(null);
+                      setPreviewUrl(null);
+                      approveProofMutation.mutate(viewingProof.id);
+                    }}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setViewingProof(null);
+                      setPreviewUrl(null);
+                      rejectProofMutation.mutate(viewingProof.id);
+                    }}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => downloadFile(viewingProof?.file_path, viewingProof?.file_name)}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setViewingProof(null);
+                  setPreviewUrl(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 };

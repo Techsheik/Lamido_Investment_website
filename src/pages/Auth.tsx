@@ -34,6 +34,8 @@ const Auth = () => {
   const [country, setCountry] = useState("");
   const [state, setState] = useState("");
   const [lga, setLga] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const [referralWarning, setReferralWarning] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [userCode, setUserCode] = useState("");
@@ -134,15 +136,34 @@ const Auth = () => {
           // Wait a bit for the trigger to create the profile
           await new Promise(resolve => setTimeout(resolve, 1500));
           
+          if (referralCode.trim()) {
+            const { data: referralResult, error: referralError } = await supabase
+              .rpc('process_referral', {
+                p_new_user_id: data.user.id,
+                p_referral_code: referralCode.toUpperCase().trim()
+              });
+
+            if (referralError) {
+              setReferralWarning("Referral code not found or invalid");
+            } else if (referralResult?.success) {
+              if (referralResult.referral_processed) {
+                toast({
+                  title: "Referral Recorded",
+                  description: "Thanks for using a referral code!",
+                });
+              }
+            }
+          }
+          
           // Fetch the user code from the profile
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('user_code')
+            .select('referral_code')
             .eq('id', data.user.id)
             .maybeSingle();
           
-          if (profileData?.user_code) {
-            setUserCode(profileData.user_code);
+          if (profileData?.referral_code) {
+            setUserCode(profileData.referral_code);
             setShowSuccessDialog(true);
           } else {
             toast({
@@ -403,6 +424,23 @@ const Auth = () => {
                     required
                     className="bg-input border-border text-foreground placeholder:text-muted-foreground"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-referral" className="text-foreground">Referral Code <span className="text-muted-foreground">(Optional)</span></Label>
+                  <Input
+                    id="signup-referral"
+                    type="text"
+                    placeholder="Enter referral code if you have one"
+                    value={referralCode}
+                    onChange={(e) => {
+                      setReferralCode(e.target.value);
+                      setReferralWarning("");
+                    }}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                  {referralWarning && (
+                    <p className="text-sm text-destructive">{referralWarning}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-password" className="text-foreground">Password *</Label>

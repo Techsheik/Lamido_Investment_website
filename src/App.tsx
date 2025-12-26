@@ -22,6 +22,7 @@ import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminInvestments from "./pages/admin/AdminInvestments";
 import AdminTransactions from "./pages/admin/AdminTransactions";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -34,6 +35,7 @@ import AdminTransactionProofs from "./pages/admin/AdminTransactionProofs";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 import Announcements from "./pages/Announcements";
 import Complaints from "./pages/Complaints";
+import Referrals from "./pages/Referrals";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 
@@ -65,9 +67,11 @@ const App = () => (
               <Route path="/payment" element={<Payment />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/complaints" element={<Complaints />} />
+              <Route path="/referrals" element={<Referrals />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/users/:userId" element={<AdminUserDetail />} />
               <Route path="/admin/investments" element={<AdminInvestments />} />
               <Route path="/admin/transactions" element={<AdminTransactions />} />
               <Route path="/admin/settings" element={<AdminSettings />} />

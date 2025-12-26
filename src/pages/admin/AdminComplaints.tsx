@@ -16,16 +16,37 @@ const AdminComplaints = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
 
-  const { data: complaints, isLoading } = useQuery({
+  const { data: complaints, isLoading, error } = useQuery({
     queryKey: ["admin-complaints"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("complaints")
-        .select(
-          `id, title, description, category, status, created_at, 
-           user_id, profiles:user_id (id, name, email, phone, country)`
-        )
+        .select("*")
         .order("created_at", { ascending: false });
+      
+      if (error) {
+        console.error("Complaints query error:", error);
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        const userIds = [...new Set(data.map((c: any) => c.user_id))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, name, email, phone, country")
+          .in("id", userIds);
+        
+        const profileMap = profiles?.reduce((acc: any, p: any) => {
+          acc[p.id] = p;
+          return acc;
+        }, {}) || {};
+        
+        return data.map((c: any) => ({
+          ...c,
+          profiles: profileMap[c.user_id] || null,
+        }));
+      }
+      
       return data || [];
     },
   });
@@ -60,6 +81,14 @@ const AdminComplaints = () => {
     return (
       <AdminLayout>
         <div>Loading complaints...</div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout>
+        <div className="text-red-600">Error loading complaints: {(error as any).message}</div>
       </AdminLayout>
     );
   }

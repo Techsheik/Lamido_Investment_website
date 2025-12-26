@@ -59,11 +59,11 @@ const Invest = () => {
       const investAmount = numUnits * UNIT_PRICE;
 
       // Set end date to 7 days from now for weekly cycle
-      const startDate = new Date().toISOString();
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 7);
+      const now = new Date();
+      const startDate = now.toISOString();
+      const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
 
-      const { error: investmentError } = await supabase.from("investments").insert({
+      const { data: investmentData, error: investmentError } = await supabase.from("investments").insert({
         user_id: user.id,
         plan_id: plan.id,
         amount: investAmount,
@@ -73,23 +73,23 @@ const Invest = () => {
         duration: 7, // 7 days for weekly cycle
         start_date: startDate,
         end_date: endDate.toISOString(),
-        status: "active",
-      });
+        status: "pending",
+      }).select().single();
 
       if (investmentError) throw investmentError;
 
-      // Create transaction record
+      // Create transaction record with pending status for admin approval
       const { error: transactionError } = await supabase.from("transactions").insert({
         user_id: user.id,
         type: "deposit",
         amount: investAmount,
-        status: "completed",
+        status: "pending",
       });
 
       if (transactionError) throw transactionError;
     },
     onSuccess: () => {
-      toast({ title: "Investment created successfully! Proceed to payment." });
+      toast({ title: "Investment created! Proceed to payment..." });
       queryClient.invalidateQueries({ queryKey: ["investments"] });
       navigate("/payment");
     },

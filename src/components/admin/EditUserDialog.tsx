@@ -35,6 +35,9 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
       email: user.email,
       phone: user.phone || "",
       balance: user.balance || 0,
+      total_roi: user.total_roi || 0,
+      roi_percentage: user.roi_percentage || 0,
+      weekly_roi_percentage: user.weekly_roi_percentage || 10,
       account_status: user.account_status,
     } : undefined,
   });
@@ -48,6 +51,9 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
           email: data.email,
           phone: data.phone,
           balance: data.balance,
+          total_roi: data.total_roi,
+          roi_percentage: data.roi_percentage,
+          weekly_roi_percentage: data.weekly_roi_percentage,
           account_status: data.account_status,
         })
         .eq("id", user.id);
@@ -56,6 +62,9 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile", user.id] });
       toast({
         title: "Success",
         description: "User updated successfully",
@@ -80,7 +89,7 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit User</DialogTitle>
-          <DialogDescription>Update user information</DialogDescription>
+          <DialogDescription>Update user profile, balance, ROI, and weekly ROI percentage (market-based rate)</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
@@ -97,7 +106,20 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
           </div>
           <div className="space-y-2">
             <Label htmlFor="balance">Balance</Label>
-            <Input id="balance" type="number" step="0.01" {...register("balance")} />
+            <Input id="balance" type="number" step="0.01" {...register("balance", { valueAsNumber: true })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="total_roi">Total ROI ($)</Label>
+            <Input id="total_roi" type="number" step="0.01" {...register("total_roi", { valueAsNumber: true })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="roi_percentage">ROI Percentage (%)</Label>
+            <Input id="roi_percentage" type="number" step="0.01" {...register("roi_percentage", { valueAsNumber: true })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="weekly_roi_percentage">Weekly ROI Percentage (%)</Label>
+            <Input id="weekly_roi_percentage" type="number" step="0.01" min="0" max="100" {...register("weekly_roi_percentage", { valueAsNumber: true })} />
+            <p className="text-xs text-muted-foreground">Set the weekly ROI percentage for this user (e.g., 10 for 10%)</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="account_status">Account Status</Label>

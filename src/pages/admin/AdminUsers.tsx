@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, UserPlus } from "lucide-react";
+import { Pencil, Trash2, UserPlus, Eye } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { EditUserDialog } from "@/components/admin/EditUserDialog";
@@ -12,6 +13,7 @@ import { AddUserDialog } from "@/components/admin/AddUserDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 
 const AdminUsers = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -23,19 +25,32 @@ const AdminUsers = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select(`
-          *,
-          investments(amount, roi)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      return data.map((user: any) => ({
-        ...user,
-        totalInvested: user.investments?.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0) || 0,
-        totalROI: user.investments?.reduce((sum: number, inv: any) => sum + Number(inv.roi), 0) || 0,
-      }));
+      if (data && data.length > 0) {
+        const userIds = data.map((u: any) => u.id);
+        const { data: investments } = await supabase
+          .from("investments")
+          .select("user_id, amount, roi")
+          .in("user_id", userIds);
+
+        const invMap = investments?.reduce((acc: any, inv: any) => {
+          if (!acc[inv.user_id]) acc[inv.user_id] = [];
+          acc[inv.user_id].push(inv);
+          return acc;
+        }, {}) || {};
+
+        return data.map((user: any) => ({
+          ...user,
+          totalInvested: invMap[user.id]?.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0) || 0,
+          totalROI: invMap[user.id]?.reduce((sum: number, inv: any) => sum + Number(inv.roi), 0) || 0,
+        }));
+      }
+
+      return data;
     },
   });
 
@@ -94,6 +109,7 @@ const AdminUsers = () => {
                 <TableHead>Balance</TableHead>
                 <TableHead>Total Invested</TableHead>
                 <TableHead>Total ROI</TableHead>
+                <TableHead>Weekly ROI</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -107,12 +123,21 @@ const AdminUsers = () => {
                   <TableCell>${Number(user.balance || 0).toFixed(2)}</TableCell>
                   <TableCell>${user.totalInvested.toFixed(2)}</TableCell>
                   <TableCell>${user.totalROI.toFixed(2)}</TableCell>
+                  <TableCell>{Number(user.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
                   <TableCell>
                     <Badge variant={user.account_status === "active" ? "default" : "secondary"}>
                       {user.account_status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/admin/users/${user.id}`)}
+                      title="View full details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

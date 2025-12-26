@@ -1,4 +1,4 @@
-import { Home, TrendingUp, History, Settings, User, Wallet, CreditCard, MessageSquare } from "lucide-react";
+import { Home, TrendingUp, History, Settings, User, Wallet, CreditCard, MessageSquare, Gift } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
   Sidebar,
@@ -19,6 +19,7 @@ const menuItems = [
   { title: "Deposit", url: "/deposit", icon: CreditCard },
   { title: "Withdraw", url: "/withdraw", icon: Wallet },
   { title: "Transactions", url: "/transactions", icon: History },
+  { title: "Referrals", url: "/referrals", icon: Gift },
   { title: "Complaints", url: "/complaints", icon: MessageSquare },
   { title: "Profile", url: "/profile", icon: User },
   { title: "Settings", url: "/settings", icon: Settings },

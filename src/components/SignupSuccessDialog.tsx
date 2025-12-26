@@ -20,7 +20,7 @@ export const SignupSuccessDialog = ({ open, onClose, userCode }: SignupSuccessDi
       setCopied(true);
       toast({
         title: "Copied!",
-        description: "User code copied to clipboard",
+        description: "Referral code copied to clipboard",
       });
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
@@ -40,10 +40,10 @@ export const SignupSuccessDialog = ({ open, onClose, userCode }: SignupSuccessDi
             <CheckCircle2 className="h-12 w-12 text-green-500" />
           </div>
           <DialogTitle className="text-center text-2xl">
-            ✅ Thank you for signing up!
+            ✅ Welcome to Lamido!
           </DialogTitle>
           <DialogDescription className="text-center pt-4">
-            Welcome aboard! Here is your unique user code:
+            Your referral code is ready. Share it with friends to earn rewards!
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center space-y-4 py-4">
@@ -53,7 +53,7 @@ export const SignupSuccessDialog = ({ open, onClose, userCode }: SignupSuccessDi
             </p>
           </div>
           <p className="text-sm text-muted-foreground text-center px-4">
-            Please don't share it with anyone for security reasons.
+            Each person who signs up with your code earns you 1,000 bonus credits!
           </p>
           <div className="flex gap-2 w-full pt-2">
             <Button

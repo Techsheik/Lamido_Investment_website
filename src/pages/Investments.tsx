@@ -20,19 +20,50 @@ const Investments = () => {
     }
   }, [user, loading, navigate]);
 
-  const { data: investments, isLoading } = useQuery({
+  const { data: investments, isLoading, refetch: refetchInvestments } = useQuery({
     queryKey: ["investments", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("investments")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
+      
+      if (error) {
+        console.error("Investments fetch error:", error);
+        return [];
+      }
       return data || [];
     },
     enabled: !!user,
+    staleTime: 5000,
   });
+
+  const { data: userProfile, refetch: refetchProfile } = useQuery({
+    queryKey: ["user-profile", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("weekly_roi_percentage, roi_percentage, total_roi")
+        .eq("id", user.id)
+        .single();
+      return data;
+    },
+    enabled: !!user,
+    staleTime: 5000,
+  });
+
+  useEffect(() => {
+    if (user) {
+      const interval = setInterval(() => {
+        refetchProfile();
+        refetchInvestments();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [user, refetchProfile, refetchInvestments]);
 
   if (loading || isLoading || !user) {
     return (
@@ -45,7 +76,7 @@ const Investments = () => {
   }
 
   const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
-  const totalROI = investments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(inv.roi) / 100), 0) || 0;
+  const totalROI = investments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(userProfile?.weekly_roi_percentage || 10) / 100), 0) || 0;
 
   return (
     <DashboardLayout>
@@ -61,26 +92,26 @@ const Investments = () => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
                 Total Invested
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">${totalInvested.toLocaleString()}</div>
+              <div className="text-2xl font-bold">${totalInvested.toLocaleString()}</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
                 Expected Returns
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-success">
+              <div className="text-2xl font-bold text-success">
                 ${totalROI.toLocaleString()}
               </div>
             </CardContent>
@@ -88,12 +119,51 @@ const Investments = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Total ROI ($)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-success">
+                ${Number(userProfile?.total_roi || 0).toFixed(2)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                ROI Rate (%)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {Number(userProfile?.roi_percentage || 0).toFixed(2)}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Weekly ROI (%)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-success">
+                {Number(userProfile?.weekly_roi_percentage || 10).toFixed(2)}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-medium text-muted-foreground">
                 Active Plans
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
+              <div className="text-2xl font-bold text-blue-600">
                 {investments?.filter(inv => inv.status === "active").length || 0}
               </div>
             </CardContent>
@@ -108,7 +178,7 @@ const Investments = () => {
               const now = new Date();
               const totalDuration = endDate.getTime() - startDate.getTime();
               const elapsed = now.getTime() - startDate.getTime();
-              const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+              const progress = totalDuration > 0 ? Math.min(100, Math.max(0, (elapsed / totalDuration) * 100)) : 0;
               const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
               return (
@@ -138,15 +208,23 @@ const Investments = () => {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Weekly ROI</p>
-                        <p className="text-xl font-bold text-success">{investment.roi}%</p>
+                        <p className="text-xl font-bold text-success">{Number(userProfile?.weekly_roi_percentage || 10).toFixed(2)}%</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Weekly Return</p>
                         <p className="text-xl font-bold text-success">
-                          ${(Number(investment.amount) * (Number(investment.roi) / 100)).toFixed(2)}
+                          ${(Number(investment.amount) * (Number(userProfile?.weekly_roi_percentage || 10) / 100)).toFixed(2)}
                         </p>
                       </div>
                     </div>
+
+                    {investment.status === "pending" && (
+                      <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                        <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
+                          ⏳ Pending admin approval - progress will start once approved
+                        </p>
+                      </div>
+                    )}
 
                     {investment.status === "active" && (
                       <div className="space-y-2">
