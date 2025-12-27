@@ -16,7 +16,6 @@ import logo from "@/assets/logo.png";
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Investments", url: "/investments", icon: TrendingUp },
-  { title: "Deposit", url: "/deposit", icon: CreditCard },
   { title: "Withdraw", url: "/withdraw", icon: Wallet },
   { title: "Transactions", url: "/transactions", icon: History },
   { title: "Referrals", url: "/referrals", icon: Gift },

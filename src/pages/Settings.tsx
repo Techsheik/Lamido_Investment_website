@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Settings as SettingsIcon, Bell, Lock, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { BankDetailsForm } from "@/components/BankDetailsForm";
 
 export default function Settings() {
   const { user, loading } = useAuth();
@@ -158,6 +159,8 @@ export default function Settings() {
             </div>
           </div>
         </Card>
+
+        <BankDetailsForm />
       </div>
     </DashboardLayout>
   );

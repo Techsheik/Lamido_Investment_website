@@ -40,6 +40,7 @@ const AdminUserDetail = () => {
           phone: data.phone,
           balance: data.balance,
           total_roi: data.total_roi,
+          accrued_return: data.accrued_return || 0,
           roi_percentage: data.roi_percentage,
           weekly_roi_percentage: data.weekly_roi_percentage,
           account_status: data.account_status,
@@ -302,6 +303,16 @@ const AdminUserDetail = () => {
                       value={formData.total_roi}
                       onChange={(e) => setFormData({ ...formData, total_roi: parseFloat(e.target.value) })}
                     />
+                  </div>
+                  <div>
+                    <Label>Accrued Return ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.accrued_return}
+                      onChange={(e) => setFormData({ ...formData, accrued_return: parseFloat(e.target.value) })}
+                    />
+                    <p className="text-xs text-muted-foreground">Weekly returns accrued (7+ days)</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

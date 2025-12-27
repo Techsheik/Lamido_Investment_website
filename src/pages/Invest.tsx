@@ -44,11 +44,29 @@ const Invest = () => {
     enabled: !!planId,
   });
 
+  const { data: bankDetails } = useQuery({
+    queryKey: ["bank-details", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("bank_account_number, bank_name")
+        .eq("id", user.id)
+        .single();
+      return data;
+    },
+    enabled: !!user,
+  });
+
   const createInvestment = useMutation({
     mutationFn: async () => {
       if (!user || !plan) throw new Error("Missing data");
       if (!supabaseUrl) {
         throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
+      }
+
+      if (!bankDetails?.bank_account_number || !bankDetails?.bank_name) {
+        throw new Error("Please add your bank details in Settings before investing");
       }
       
       const numUnits = Number(units);
@@ -160,6 +178,21 @@ const Invest = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {!bankDetails?.bank_account_number && (
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
+                  ⚠️ Bank details required to invest. Please add your bank information in Settings before proceeding.
+                </p>
+                <Button 
+                  variant="outline" 
+                  className="mt-3 w-full"
+                  onClick={() => navigate("/settings")}
+                >
+                  Add Bank Details
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Unit Price</Label>
@@ -228,7 +261,7 @@ const Invest = () => {
               className="w-full" 
               size="lg"
               onClick={() => createInvestment.mutate()}
-              disabled={!units || Number(units) < 1 || !Number.isInteger(Number(units)) || createInvestment.isPending}
+              disabled={!units || Number(units) < 1 || !Number.isInteger(Number(units)) || createInvestment.isPending || !bankDetails?.bank_account_number}
             >
               {createInvestment.isPending ? "Processing..." : `Invest ${units ? Number(units) : ''} Unit${units && Number(units) !== 1 ? 's' : ''}`}
             </Button>

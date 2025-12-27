@@ -12,6 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BankDetailsDisplay } from "./BankDetailsDisplay";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface EditInvestmentDialogProps {
   investment: any;
@@ -68,38 +70,56 @@ export function EditInvestmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Investment</DialogTitle>
-          <DialogDescription>Update investment ROI and duration</DialogDescription>
+          <DialogTitle>Investment Details</DialogTitle>
+          <DialogDescription>View and edit investment information</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="roi">ROI Amount ($)</Label>
-            <Input
-              id="roi"
-              type="number"
-              step="0.01"
-              {...register("roi", { valueAsNumber: true })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="duration">Duration (days)</Label>
-            <Input
-              id="duration"
-              type="number"
-              {...register("duration", { valueAsNumber: true })}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateInvestmentMutation.isPending}>
-              Save Changes
-            </Button>
-          </div>
-        </form>
+        <Tabs defaultValue="investment" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="investment">Investment</TabsTrigger>
+            <TabsTrigger value="banking">Banking Info</TabsTrigger>
+          </TabsList>
+          <TabsContent value="investment" className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="roi">ROI Amount ($)</Label>
+                <Input
+                  id="roi"
+                  type="number"
+                  step="0.01"
+                  {...register("roi", { valueAsNumber: true })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="duration">Duration (days)</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  {...register("duration", { valueAsNumber: true })}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateInvestmentMutation.isPending}>
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          </TabsContent>
+          <TabsContent value="banking">
+            <div className="py-4">
+              <BankDetailsDisplay
+                accountHolderName={investment?.profiles?.account_holder_name}
+                bankName={investment?.profiles?.bank_name}
+                bankAccountNumber={investment?.profiles?.bank_account_number}
+                routingNumber={investment?.profiles?.routing_number}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

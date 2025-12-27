@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import { BankDetailsDisplay } from "@/components/admin/BankDetailsDisplay";
 
 const AdminTransactionProofs = () => {
   const { toast } = useToast();
@@ -38,7 +39,7 @@ const AdminTransactionProofs = () => {
       const userIds = [...new Set(data.map((p: any) => p.user_id))];
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id, name, email, user_code")
+        .select("id, name, email, user_code, account_holder_name, bank_name, bank_account_number, routing_number")
         .in("id", userIds);
 
       const profileMap = profiles?.reduce((acc: any, p: any) => {
@@ -363,6 +364,14 @@ const AdminTransactionProofs = () => {
                 </p>
               </div>
             </div>
+
+            {/* Bank Details */}
+            <BankDetailsDisplay
+              accountHolderName={viewingProof?.profiles?.account_holder_name}
+              bankName={viewingProof?.profiles?.bank_name}
+              bankAccountNumber={viewingProof?.profiles?.bank_account_number}
+              routingNumber={viewingProof?.profiles?.routing_number}
+            />
 
             {/* File Preview */}
             {previewUrl && (

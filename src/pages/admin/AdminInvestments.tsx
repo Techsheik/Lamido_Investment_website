@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Pencil, CheckCircle } from "lucide-react";
+import { Pencil, CheckCircle, X } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { EditInvestmentDialog } from "@/components/admin/EditInvestmentDialog";
@@ -36,7 +36,7 @@ const AdminInvestments = () => {
       const userIds = [...new Set(data.map((inv: any) => inv.user_id))];
       const { data: profiles, error: profileError } = await supabase
         .from("profiles")
-        .select("id, name, user_code, balance, weekly_roi_percentage")
+        .select("id, name, user_code, balance, weekly_roi_percentage, account_holder_name, bank_name, bank_account_number, routing_number")
         .in("id", userIds);
 
       if (profileError) {
@@ -88,6 +88,43 @@ const AdminInvestments = () => {
       toast({
         title: "Error",
         description: "Failed to complete investment: " + error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectInvestmentMutation = useMutation({
+    mutationFn: async (investment: any) => {
+      const { error: invError } = await supabase
+        .from("investments")
+        .update({ status: "rejected" })
+        .eq("id", investment.id);
+
+      if (invError) throw invError;
+
+      if (investment.status === "pending") {
+        const currentBalance = Number(investment.profiles.balance || 0);
+        const newBalance = currentBalance - Number(investment.amount);
+        const { error: balanceError } = await supabase
+          .from("profiles")
+          .update({ balance: newBalance })
+          .eq("id", investment.user_id);
+
+        if (balanceError) throw balanceError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({
+        title: "Success",
+        description: "Investment rejected. User will be notified.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to reject investment: " + error.message,
         variant: "destructive",
       });
     },
@@ -148,7 +185,7 @@ const AdminInvestments = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => setEditingInvestment(investment)}
-                        disabled={investment.status === "completed"}
+                        disabled={investment.status === "completed" || investment.status === "rejected"}
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
@@ -156,9 +193,17 @@ const AdminInvestments = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => completeInvestmentMutation.mutate(investment)}
-                        disabled={investment.status === "completed"}
+                        disabled={investment.status === "completed" || investment.status === "rejected"}
                       >
                         <CheckCircle className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => rejectInvestmentMutation.mutate(investment)}
+                        disabled={investment.status === "completed" || investment.status === "rejected"}
+                      >
+                        <X className="w-4 h-4" />
                       </Button>
                     </TableCell>
                   </TableRow>

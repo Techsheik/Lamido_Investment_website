@@ -46,7 +46,7 @@ const Investments = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("weekly_roi_percentage, roi_percentage, total_roi")
+        .select("weekly_roi_percentage, roi_percentage, total_roi, accrued_return")
         .eq("id", user.id)
         .single();
       return data;
@@ -75,8 +75,11 @@ const Investments = () => {
     );
   }
 
-  const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
-  const totalROI = investments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(userProfile?.weekly_roi_percentage || 10) / 100), 0) || 0;
+  const activeInvestments = investments?.filter(inv => inv.status !== "rejected") || [];
+  const rejectedInvestments = investments?.filter(inv => inv.status === "rejected") || [];
+  
+  const totalInvested = activeInvestments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
+  const totalROI = activeInvestments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(userProfile?.weekly_roi_percentage || 10) / 100), 0) || 0;
 
   return (
     <DashboardLayout>
@@ -170,9 +173,17 @@ const Investments = () => {
           </Card>
         </div>
 
-        {investments && investments.length > 0 ? (
+        {rejectedInvestments && rejectedInvestments.length > 0 && (
+          <Card className="p-4 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
+            <p className="text-sm font-medium text-red-800 dark:text-red-400">
+              ⚠️ You have {rejectedInvestments.length} declined investment(s). Your invested amount has been refunded. Please contact our support team for more details.
+            </p>
+          </Card>
+        )}
+
+        {activeInvestments && activeInvestments.length > 0 ? (
           <div className="grid gap-6">
-            {investments.map((investment) => {
+            {activeInvestments.map((investment) => {
               const startDate = new Date(investment.start_date);
               const duration = investment.duration || 7;
               const endDate = new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);

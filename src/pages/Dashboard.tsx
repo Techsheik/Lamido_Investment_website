@@ -30,6 +30,20 @@ const Dashboard = () => {
     enabled: !!user,
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ["user-profile", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("accrued_return")
+        .eq("id", user.id)
+        .single();
+      return data;
+    },
+    enabled: !!user,
+  });
+
   if (loading || !user) {
     return (
       <DashboardLayout>
@@ -44,8 +58,8 @@ const Dashboard = () => {
   const activeInvestments = investments?.filter(inv => inv.status === "active").length || 0;
   const totalROI = investments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(inv.roi) / 100), 0) || 0;
   
-  // Calculate Total Accrued Return (only for investments that have completed at least 7 days)
-  const totalAccruedReturn = investments?.reduce((sum, inv) => {
+  // Calculate accrued return from investments (7+ days) - client-side calculation
+  const calculatedAccruedReturn = investments?.reduce((sum, inv) => {
     if (inv.status !== "active" || !inv.start_date) return sum;
     
     const startDate = new Date(inv.start_date);
@@ -60,6 +74,12 @@ const Dashboard = () => {
     
     return sum;
   }, 0) || 0;
+
+  // Admin-set accrued return
+  const adminAccruedReturn = Number(profile?.accrued_return || 0);
+
+  // Total accrued return = admin value + calculated value
+  const totalAccruedReturn = calculatedAccruedReturn + adminAccruedReturn;
 
   // Calculate total units
   const totalUnits = investments?.reduce((sum, inv) => sum + (inv.units || 1), 0) || 0;
@@ -95,7 +115,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-success">${totalAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Available to withdraw (7+ days)</p>
+              <p className="text-xs text-muted-foreground mt-1">Calculated on the client side based on investments active for 7+ days</p>
             </CardContent>
           </Card>
 
@@ -135,9 +155,6 @@ const Dashboard = () => {
               </Button>
               <Button variant="outline" className="w-full" onClick={() => navigate("/deposit")}>
                 Deposit Funds
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate("/payment")}>
-                Make Payment
               </Button>
               <Button variant="outline" className="w-full" onClick={() => navigate("/investments")}>
                 View My Investments
