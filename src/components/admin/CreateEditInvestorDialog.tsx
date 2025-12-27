@@ -102,6 +102,9 @@ export function CreateEditInvestorDialog({
 
       if (investor) {
         // Update existing investor record
+        const oldAmount = Number(investor.amount || 0);
+        const amountDifference = payload.amount - oldAmount;
+
         const { error } = await supabase
           .from("investments")
           .update({
@@ -114,13 +117,23 @@ export function CreateEditInvestorDialog({
 
         if (error) throw error;
 
-        // Also update profile if email or name changed
+        // Also update profile if email or name changed, and adjust balance for amount changes
         if (investor.user_id) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("balance")
+            .eq("id", investor.user_id)
+            .single();
+
+          const currentBalance = Number(profile?.balance || 0);
+          const newBalance = currentBalance + amountDifference;
+
           const profileError = await supabase
             .from("profiles")
             .update({
               name: payload.name,
               email: payload.email,
+              balance: newBalance,
             })
             .eq("id", investor.user_id);
 
@@ -131,7 +144,7 @@ export function CreateEditInvestorDialog({
         // First, we need to find or create a user profile
         const { data: existingProfile } = await supabase
           .from("profiles")
-          .select("id")
+          .select("id, balance")
           .eq("email", payload.email)
           .single();
 
@@ -155,6 +168,17 @@ export function CreateEditInvestorDialog({
         });
 
         if (error) throw error;
+
+        // Update user's balance in profiles table
+        const currentBalance = Number(existingProfile?.balance || 0);
+        const newBalance = currentBalance + payload.amount;
+
+        const { error: balanceError } = await supabase
+          .from("profiles")
+          .update({ balance: newBalance })
+          .eq("id", userId);
+
+        if (balanceError) throw balanceError;
       }
     },
     onSuccess: () => {

@@ -68,7 +68,7 @@ export default function Services() {
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {plans?.map((plan, index) => (
+              {plans?.filter((plan) => !plan.name.toLowerCase().includes('stacking')).map((plan, index) => (
                 <Card
                   key={plan.id}
                   className="p-6 relative overflow-hidden hover:shadow-xl transition-all animate-fade-in group"
