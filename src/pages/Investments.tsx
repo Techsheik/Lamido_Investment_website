@@ -174,12 +174,13 @@ const Investments = () => {
           <div className="grid gap-6">
             {investments.map((investment) => {
               const startDate = new Date(investment.start_date);
-              const endDate = new Date(investment.end_date);
+              const duration = investment.duration || 7;
+              const endDate = new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
               const now = new Date();
-              const totalDuration = endDate.getTime() - startDate.getTime();
-              const elapsed = now.getTime() - startDate.getTime();
-              const progress = totalDuration > 0 ? Math.min(100, Math.max(0, (elapsed / totalDuration) * 100)) : 0;
-              const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              
+              const daysElapsed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+              const progress = Math.min(100, Math.max(0, (daysElapsed / duration) * 100));
+              const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
               return (
                 <Card key={investment.id}>
@@ -229,12 +230,24 @@ const Investments = () => {
                     {investment.status === "active" && (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Progress</span>
+                          <span className="text-muted-foreground">Progress (Day {Math.min(daysElapsed, duration)} of {duration})</span>
                           <span className="font-medium">
                             {daysRemaining > 0 ? `${daysRemaining} days remaining` : "Matured"}
                           </span>
                         </div>
-                        <Progress value={progress} />
+                        <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${progress}%`,
+                              background: progress < 33 ? 
+                                'linear-gradient(90deg, #ef4444, #f97316)' :
+                                progress < 66 ?
+                                'linear-gradient(90deg, #f97316, #eab308)' :
+                                'linear-gradient(90deg, #eab308, #22c55e)'
+                            }}
+                          />
+                        </div>
                       </div>
                     )}
                   </CardContent>
