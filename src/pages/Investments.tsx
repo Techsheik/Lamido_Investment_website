@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ import { TrendingUp } from "lucide-react";
 const Investments = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [, setRerender] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,6 +65,13 @@ const Investments = () => {
       return () => clearInterval(interval);
     }
   }, [user, refetchProfile, refetchInvestments]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRerender(prev => prev + 1);
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (loading || isLoading || !user) {
     return (
@@ -189,7 +197,9 @@ const Investments = () => {
               const endDate = new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
               const now = new Date();
               
-              const daysElapsed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+              const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+              const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const daysElapsed = Math.floor((currentDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)) + 1;
               const progress = Math.min(100, Math.max(0, (daysElapsed / duration) * 100));
               const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
