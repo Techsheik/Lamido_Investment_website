@@ -8,18 +8,9 @@ const AdminDashboard = () => {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["admin-stats"],
     queryFn: async () => {
-      const [usersRes, investmentsRes, transactionsRes] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact" }),
-        supabase.from("investments").select("amount"),
-        supabase.from("transactions").select("type, amount"),
-      ]);
-
-      const totalUsers = usersRes.count || 0;
-      const totalInvestments = investmentsRes.data?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
-      const deposits = transactionsRes.data?.filter(t => t.type === "deposit").reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-      const withdrawals = transactionsRes.data?.filter(t => t.type === "withdrawal").reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-
-      return { totalUsers, totalInvestments, deposits, withdrawals };
+      const response = await fetch("/api/admin/get-stats");
+      if (!response.ok) throw new Error("Failed to fetch stats");
+      return await response.json();
     },
   });
 

@@ -62,9 +62,13 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-user-detail", user.id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["investments"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile", user.id] });
+      
       toast({
         title: "Success",
         description: "User updated successfully",

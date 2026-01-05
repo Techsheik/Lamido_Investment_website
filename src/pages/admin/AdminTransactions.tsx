@@ -26,101 +26,53 @@ const AdminTransactions = () => {
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["admin-transactions", statusFilter, typeFilter, dateFilter, searchQuery],
     queryFn: async () => {
-      let query = supabase
-        .from("transactions")
-        .select(`
-          *,
-          profiles(name, user_code, balance, email),
-          virtual_accounts(account_number, bank_name)
-        `);
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.append("status", statusFilter);
+      if (typeFilter !== "all") params.append("type", typeFilter);
+      if (dateFilter) params.append("date", dateFilter);
 
-      // Apply filters
-      if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
-      }
-      if (typeFilter !== "all") {
-        query = query.eq("type", typeFilter);
-      }
-      if (dateFilter) {
-        const startDate = new Date(dateFilter);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(dateFilter);
-        endDate.setHours(23, 59, 59, 999);
-        query = query.gte("created_at", startDate.toISOString())
-                     .lte("created_at", endDate.toISOString());
-      }
+      const response = await fetch(`/api/admin/get-transactions?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch transactions");
+      
+      const data = await response.json();
+      const mappedData = (data || []).map((t: any) => ({
+        ...t,
+        profile: Array.isArray(t.profiles) ? t.profiles[0] : t.profiles,
+      }));
 
-      query = query.order("created_at", { ascending: false });
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Apply search filter
+      // Apply search filter client-side as before
       if (searchQuery) {
-        return data.filter((t: any) => 
-          t.profiles?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.profiles?.user_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          t.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        return mappedData.filter((t: any) => 
+          t.profile?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.profile?.user_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.profile?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           t.reference?.toLowerCase().includes(searchQuery.toLowerCase())
         );
       }
 
-      return data;
+      return mappedData;
     },
   });
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status, transaction }: { id: string; status: string; transaction: any }) => {
-      // Update transaction status
-      const { error } = await supabase
-        .from("transactions")
-        .update({ 
-          status: status === "approved" ? "completed" : status,
-          approved_at: new Date().toISOString(),
-          approved_by: user?.id 
-        })
-        .eq("id", id);
+      const response = await fetch("/api/admin/update-transaction-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          status,
+          adminId: user?.id,
+          amount: transaction.amount,
+          type: transaction.type,
+          userId: transaction.user_id,
+          currentBalance: transaction.profile?.balance || 0
+        }),
+      });
 
-      if (error) throw error;
-
-      // If approved deposit, add to user balance and activate pending investment
-      if (status === "approved" && transaction.type === "deposit") {
-        const currentBalance = Number(transaction.profiles?.balance || 0);
-        const newBalance = currentBalance + Number(transaction.amount);
-        
-        const { error: balanceError } = await supabase
-          .from("profiles")
-          .update({ balance: newBalance })
-          .eq("id", transaction.user_id);
-
-        if (balanceError) throw balanceError;
-
-        // Activate pending investment - reset dates so progress starts from 0%
-        const now = new Date();
-        const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
-
-        await supabase
-          .from("investments")
-          .update({
-            status: "active",
-            start_date: now.toISOString(),
-            end_date: endDate.toISOString(),
-          })
-          .eq("user_id", transaction.user_id)
-          .eq("status", "pending");
-      }
-
-      // If approved withdrawal, deduct from user balance
-      if (status === "approved" && transaction.type === "withdrawal") {
-        const currentBalance = Number(transaction.profiles?.balance || 0);
-        const newBalance = currentBalance - Number(transaction.amount);
-        
-        const { error: balanceError } = await supabase
-          .from("profiles")
-          .update({ balance: newBalance })
-          .eq("id", transaction.user_id);
-
-        if (balanceError) throw balanceError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update transaction");
       }
     },
     onSuccess: (_, variables) => {
@@ -256,8 +208,8 @@ const AdminTransactions = () => {
               {transactions && transactions.length > 0 ? (
                 transactions.map((transaction: any) => (
                   <TableRow key={transaction.id}>
-                    <TableCell>{transaction.profiles?.name || "N/A"}</TableCell>
-                    <TableCell className="font-mono">{transaction.profiles?.user_code || "N/A"}</TableCell>
+                    <TableCell>{transaction.profile?.name || "N/A"}</TableCell>
+                    <TableCell className="font-mono">{transaction.profile?.user_code || "N/A"}</TableCell>
                     <TableCell className="capitalize">
                       <Badge variant={transaction.type === "deposit" ? "default" : "secondary"}>
                         {transaction.type}

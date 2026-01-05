@@ -23,45 +23,24 @@ const AdminUsers = () => {
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const userIds = data.map((u: any) => u.id);
-        const { data: investments } = await supabase
-          .from("investments")
-          .select("user_id, amount, roi")
-          .in("user_id", userIds);
-
-        const invMap = investments?.reduce((acc: any, inv: any) => {
-          if (!acc[inv.user_id]) acc[inv.user_id] = [];
-          acc[inv.user_id].push(inv);
-          return acc;
-        }, {}) || {};
-
-        return data.map((user: any) => ({
-          ...user,
-          totalInvested: invMap[user.id]?.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0) || 0,
-          totalROI: invMap[user.id]?.reduce((sum: number, inv: any) => sum + Number(inv.roi), 0) || 0,
-        }));
-      }
-
-      return data;
+      const response = await fetch("/api/admin/get-users");
+      if (!response.ok) throw new Error("Failed to fetch users");
+      return await response.json();
     },
   });
 
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { error } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", userId);
+      const response = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete user");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });

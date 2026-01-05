@@ -43,6 +43,17 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
     },
   });
 
+  const generateUserCode = (name: string) => {
+    const initials = name
+      .split(" ")
+      .map((n) => n.charAt(0).toUpperCase())
+      .join("")
+      .substring(0, 2);
+    const date = new Date().toLocaleDateString("en-GB").replace(/\//g, "");
+    const timestamp = Date.now().toString().slice(-4);
+    return `${initials}${date}${timestamp}`;
+  };
+
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {
       // Step 1: Create auth account with Supabase
@@ -60,20 +71,39 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Failed to create user account");
 
-      // Step 2: Create profile record
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: authData.user.id,
-        email: data.email,
-        name: data.name,
-        phone: data.phone,
-        balance: data.balance,
-        account_status: data.account_status,
-        country: data.country,
-        state: data.state,
-        lga: data.lga,
-      });
+      // Step 3: Update the profile with additional fields - with retry logic
+      const userCode = generateUserCode(data.name);
+      let profileSynced = false;
+      for (let i = 0; i < 5; i++) {
+        const { data: profileResult, error: updateError } = await supabase
+          .from("profiles")
+          .upsert({
+            id: authData.user.id,
+            name: data.name,
+            email: data.email,
+            phone: data.phone,
+            balance: Number(data.balance) || 0,
+            account_status: data.account_status || "active",
+            country: data.country,
+            state: data.state,
+            lga: data.lga,
+            user_code: userCode,
+            weekly_roi_percentage: 10.0,
+          })
+          .select();
 
-      if (profileError) throw profileError;
+        if (!updateError && profileResult && profileResult.length > 0) {
+          profileSynced = true;
+          break;
+        }
+        
+        console.warn(`AddUser profile sync attempt ${i + 1} failed, retrying...`, updateError);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!profileSynced) {
+        throw new Error("Failed to create user profile after multiple attempts.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
@@ -152,7 +182,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="balance">Initial Balance ($)</Label>
-              <Input id="balance" type="number" step="0.01" {...register("balance")} />
+              <Input id="balance" type="number" step="0.01" {...register("balance", { valueAsNumber: true })} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="account_status">Account Status</Label>

@@ -193,10 +193,13 @@ export type Database = {
           phone: string | null
           profile_pic: string | null
           referral_code: string | null
+          roi_percentage: number | null
           state: string | null
           surname: string | null
+          total_roi: number | null
           updated_at: string | null
           user_code: string | null
+          weekly_roi_percentage: number | null
         }
         Insert: {
           account_status?: string | null
@@ -212,10 +215,13 @@ export type Database = {
           phone?: string | null
           profile_pic?: string | null
           referral_code?: string | null
+          roi_percentage?: number | null
           state?: string | null
           surname?: string | null
+          total_roi?: number | null
           updated_at?: string | null
           user_code?: string | null
+          weekly_roi_percentage?: number | null
         }
         Update: {
           account_status?: string | null
@@ -231,10 +237,13 @@ export type Database = {
           phone?: string | null
           profile_pic?: string | null
           referral_code?: string | null
+          roi_percentage?: number | null
           state?: string | null
           surname?: string | null
+          total_roi?: number | null
           updated_at?: string | null
           user_code?: string | null
+          weekly_roi_percentage?: number | null
         }
         Relationships: []
       }

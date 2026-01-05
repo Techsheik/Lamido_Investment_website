@@ -29,27 +29,22 @@ const AdminTransactionProofs = () => {
   const { data: proofs, isLoading } = useQuery({
     queryKey: ["admin-transaction-proofs"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("transaction_proofs")
-        .select("*")
+        .select(`
+          *,
+          profiles:user_id(id, name, email, user_code, account_holder_name, bank_name, bank_account_number, routing_number)
+        `)
         .order("upload_date", { ascending: false });
 
-      if (!data || data.length === 0) return data || [];
+      if (error) {
+        console.error("Error fetching transaction proofs:", error);
+        throw error;
+      }
 
-      const userIds = [...new Set(data.map((p: any) => p.user_id))];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, name, email, user_code, account_holder_name, bank_name, bank_account_number, routing_number")
-        .in("id", userIds);
-
-      const profileMap = profiles?.reduce((acc: any, p: any) => {
-        acc[p.id] = p;
-        return acc;
-      }, {}) || {};
-
-      return data.map((p: any) => ({
+      return (data || []).map((p: any) => ({
         ...p,
-        profiles: profileMap[p.user_id] || null,
+        profile: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles,
       }));
     },
   });
@@ -222,8 +217,8 @@ const AdminTransactionProofs = () => {
               ) : (
                 proofs?.map((proof: any) => (
                   <TableRow key={proof.id}>
-                    <TableCell className="font-medium">{proof.profiles?.name || "Unknown"}</TableCell>
-                    <TableCell className="text-sm">{proof.profiles?.email}</TableCell>
+                    <TableCell className="font-medium">{proof.profile?.name || "Unknown"}</TableCell>
+                    <TableCell className="text-sm">{proof.profile?.email}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -333,7 +328,7 @@ const AdminTransactionProofs = () => {
       <Dialog open={!!viewingProof} onOpenChange={(open) => !open && setViewingProof(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Payment Proof - {viewingProof?.profiles?.name}</DialogTitle>
+            <DialogTitle>Payment Proof - {viewingProof?.profile?.name}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
@@ -342,15 +337,15 @@ const AdminTransactionProofs = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">User Name</p>
-                  <p className="font-semibold">{viewingProof?.profiles?.name}</p>
+                  <p className="font-semibold">{viewingProof?.profile?.name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">User Code</p>
-                  <p className="font-semibold font-mono text-primary">{viewingProof?.profiles?.user_code || "N/A"}</p>
+                  <p className="font-semibold font-mono text-primary">{viewingProof?.profile?.user_code || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-semibold text-sm">{viewingProof?.profiles?.email}</p>
+                  <p className="font-semibold text-sm">{viewingProof?.profile?.email}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">File Name</p>
@@ -367,10 +362,10 @@ const AdminTransactionProofs = () => {
 
             {/* Bank Details */}
             <BankDetailsDisplay
-              accountHolderName={viewingProof?.profiles?.account_holder_name}
-              bankName={viewingProof?.profiles?.bank_name}
-              bankAccountNumber={viewingProof?.profiles?.bank_account_number}
-              routingNumber={viewingProof?.profiles?.routing_number}
+              accountHolderName={viewingProof?.profile?.account_holder_name}
+              bankName={viewingProof?.profile?.bank_name}
+              bankAccountNumber={viewingProof?.profile?.bank_account_number}
+              routingNumber={viewingProof?.profile?.routing_number}
             />
 
             {/* File Preview */}

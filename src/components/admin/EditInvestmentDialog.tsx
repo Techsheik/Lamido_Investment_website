@@ -49,6 +49,7 @@ export function EditInvestmentDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
       toast({
         title: "Success",
         description: "Investment updated successfully",
@@ -83,7 +84,7 @@ export function EditInvestmentDialog({
           <TabsContent value="investment" className="space-y-4">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="roi">ROI Amount ($)</Label>
+                <Label htmlFor="roi">ROI Percentage (%)</Label>
                 <Input
                   id="roi"
                   type="number"

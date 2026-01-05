@@ -11,9 +11,11 @@ import { useToast } from "@/hooks/use-toast";
 import { CreateEditInvestorDialog } from "@/components/admin/CreateEditInvestorDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { format } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 const AdminInvestorManagement = () => {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [editingInvestor, setEditingInvestor] = useState<any>(null);
   const [creatingInvestor, setCreatingInvestor] = useState(false);
@@ -22,45 +24,65 @@ const AdminInvestorManagement = () => {
   );
 
   // Fetch all investor records (via investments table)
-  const { data: investors, isLoading } = useQuery({
+  const { data: investors, isLoading, refetch } = useQuery({
     queryKey: ["admin-investors"],
+    refetchInterval: 10000, 
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("investments")
-        .select(
-          `
-          id,
-          user_id,
-          amount,
-          roi,
-          status,
-          start_date,
-          created_at,
-          plan_id,
-          profiles(name, email, balance),
-          investment_plans(name, roi_percentage)
-        `
-        )
-        .order("created_at", { ascending: false });
+      console.log("Fetching admin-investors via API...");
+      const response = await fetch("/api/admin/get-investments");
+      if (!response.ok) {
+        throw new Error("Failed to fetch investors from admin API");
+      }
+      const data = await response.json();
 
-      if (error) throw error;
-      return data;
+      console.log("Investments data received:", data?.length, "records");
+
+      const mappedData = (data || [])
+        .map((inv: any) => {
+        // Handle case where profiles might be an array or a single object
+        const profile = Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles;
+        const roiPercentage = Number(inv.roi || profile?.weekly_roi_percentage || 10);
+        const roiAmount = (Number(inv.amount) * roiPercentage) / 100;
+        
+        return {
+          ...inv,
+          profile: profile || null,
+          calculatedROI: roiAmount,
+          roiPercentage: roiPercentage
+        };
+      });
+      
+      if (mappedData.length > 0) {
+        console.log("Mapped investors data sample:", mappedData[0]);
+      } else {
+        console.log("No mapped data after filtering. currentUser:", currentUser?.id);
+      }
+      return mappedData;
     },
   });
 
   // Delete investor mutation
   const deleteInvestorMutation = useMutation({
     mutationFn: async (investorId: string) => {
-      const { error } = await supabase
-        .from("investments")
-        .delete()
-        .eq("id", investorId);
+      const response = await fetch("/api/admin/delete-investor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investmentId: investorId }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete investor");
+      }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-investors"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-investments"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["investments"] })
+      ]);
       toast({
         title: "Success",
         description: "Investor record deleted successfully",
@@ -90,7 +112,7 @@ const AdminInvestorManagement = () => {
   ) || 0;
 
   const totalROI = investors?.reduce(
-    (sum: number, inv: any) => sum + Number(inv.roi),
+    (sum: number, inv: any) => sum + Number(inv.calculatedROI || 0),
     0
   ) || 0;
 
@@ -101,7 +123,7 @@ const AdminInvestorManagement = () => {
           <div>
             <h1 className="text-3xl font-bold">Investor Management</h1>
             <p className="text-muted-foreground mt-2">
-              Upload, manage, and track investor data
+              Manage and track investor data (Total: {investors?.length || 0})
             </p>
           </div>
           <Button onClick={() => setCreatingInvestor(true)} size="lg">
@@ -116,6 +138,7 @@ const AdminInvestorManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Investor Name</TableHead>
+                  <TableHead>User ID (Debug)</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Investment Amount</TableHead>
                   <TableHead>Plan</TableHead>
@@ -129,10 +152,16 @@ const AdminInvestorManagement = () => {
                 {investors.map((investor: any) => (
                   <TableRow key={investor.id}>
                     <TableCell className="font-semibold">
-                      {investor.profiles?.name || "Unknown"}
+                      {investor.profile?.name || "Unknown"}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">
+                      {investor.user_id.substring(0, 8)}...
+                      {currentUser?.id === investor.user_id && (
+                        <span className="ml-1 text-red-500 font-bold">(YOU)</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {investor.profiles?.email || "N/A"}
+                      {investor.profile?.email || "N/A"}
                     </TableCell>
                     <TableCell className="font-semibold">
                       ${Number(investor.amount).toLocaleString("en-US", {
@@ -143,7 +172,10 @@ const AdminInvestorManagement = () => {
                       {investor.investment_plans?.name || "Custom"}
                     </TableCell>
                     <TableCell className="font-bold text-success">
-                      ${Number(investor.roi).toFixed(2)}
+                      ${Number(investor.calculatedROI).toFixed(2)}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({investor.roiPercentage}%)
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm">
                       {investor.start_date

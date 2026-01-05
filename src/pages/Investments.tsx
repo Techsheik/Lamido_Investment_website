@@ -87,7 +87,7 @@ const Investments = () => {
   const rejectedInvestments = investments?.filter(inv => inv.status === "rejected") || [];
   
   const totalInvested = activeInvestments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
-  const totalROI = activeInvestments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(userProfile?.weekly_roi_percentage || 10) / 100), 0) || 0;
+  const totalROI = activeInvestments?.reduce((sum, inv) => sum + (Number(inv.amount) * Number(inv.roi || userProfile?.weekly_roi_percentage || 10) / 100), 0) || 0;
 
   return (
     <DashboardLayout>
@@ -230,12 +230,12 @@ const Investments = () => {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Weekly ROI</p>
-                        <p className="text-xl font-bold text-success">{Number(userProfile?.weekly_roi_percentage || 10).toFixed(2)}%</p>
+                        <p className="text-xl font-bold text-success">{Number(investment.roi || userProfile?.weekly_roi_percentage || 10).toFixed(2)}%</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Weekly Return</p>
                         <p className="text-xl font-bold text-success">
-                          ${(Number(investment.amount) * (Number(userProfile?.weekly_roi_percentage || 10) / 100)).toFixed(2)}
+                          ${(Number(investment.amount) * (Number(investment.roi || userProfile?.weekly_roi_percentage || 10) / 100)).toFixed(2)}
                         </p>
                       </div>
                     </div>

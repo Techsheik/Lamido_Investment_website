@@ -28,6 +28,7 @@ const Dashboard = () => {
       return data || [];
     },
     enabled: !!user,
+    refetchInterval: 10000,
   });
 
   const { data: profile } = useQuery({
@@ -42,6 +43,7 @@ const Dashboard = () => {
       return data;
     },
     enabled: !!user,
+    refetchInterval: 10000,
   });
 
   if (loading || !user) {

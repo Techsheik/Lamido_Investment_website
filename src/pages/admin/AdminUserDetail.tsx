@@ -98,6 +98,10 @@ const AdminUserDetail = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile", userId] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["investments", userId] });
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
       toast({
         title: "Success",
         description: "User details updated successfully",

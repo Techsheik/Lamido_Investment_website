@@ -34,6 +34,7 @@ export function CreateEditInvestorDialog({
 }: CreateEditInvestorDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -57,12 +58,13 @@ export function CreateEditInvestorDialog({
 
   useEffect(() => {
     if (investor) {
+      const profile = investor.profile || investor.profiles;
       setFormData({
-        name: investor.name,
-        email: investor.email,
+        name: profile?.name || "",
+        email: profile?.email || "",
         amount: String(investor.amount || ""),
         plan_id: investor.plan_id || "",
-        roi_percentage: String(investor.roi_percentage || ""),
+        roi_percentage: String(investor.roi || ""),
         start_date: investor.start_date?.split("T")[0] || "",
       });
     } else {
@@ -101,89 +103,67 @@ export function CreateEditInvestorDialog({
       };
 
       if (investor) {
-        // Update existing investor record
-        const oldAmount = Number(investor.amount || 0);
-        const amountDifference = payload.amount - oldAmount;
-
-        const { error } = await supabase
-          .from("investments")
-          .update({
+        // Update existing investor record using secure server endpoint
+        const response = await fetch("/api/admin/edit-investor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            investmentId: investor.id,
+            name: payload.name,
+            email: payload.email,
             amount: payload.amount,
-            roi: payload.roi_percentage,
-            start_date: payload.start_date,
+            roi_percentage: payload.roi_percentage,
             plan_id: payload.plan_id,
-          })
-          .eq("id", investor.id);
-
-        if (error) throw error;
-
-        // Also update profile if email or name changed, and adjust balance for amount changes
-        if (investor.user_id) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("balance")
-            .eq("id", investor.user_id)
-            .single();
-
-          const currentBalance = Number(profile?.balance || 0);
-          const newBalance = currentBalance + amountDifference;
-
-          const profileError = await supabase
-            .from("profiles")
-            .update({
-              name: payload.name,
-              email: payload.email,
-              balance: newBalance,
-            })
-            .eq("id", investor.user_id);
-
-          if (profileError.error) throw profileError.error;
-        }
-      } else {
-        // Create new investment record
-        // First, we need to find or create a user profile
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("id, balance")
-          .eq("email", payload.email)
-          .single();
-
-        const userId = existingProfile?.id;
-
-        if (!userId) {
-          throw new Error(
-            "User with this email not found. Please create the user first."
-          );
-        }
-
-        const { error } = await supabase.from("investments").insert({
-          user_id: userId,
-          amount: payload.amount,
-          roi: payload.roi_percentage,
-          plan_id: payload.plan_id,
-          start_date: payload.start_date,
-          status: "active",
-          type: "admin-created",
-          duration: 7,
+            start_date: payload.start_date,
+          }),
         });
 
-        if (error) throw error;
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to update investor");
+        }
+      } else {
+        // Create new investor using secure server endpoint
+        // This uses the service role key on the server, bypassing RLS restrictions
+        const response = await fetch("/api/admin/create-investor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: payload.name,
+            email: payload.email,
+            amount: payload.amount,
+            roi_percentage: payload.roi_percentage,
+            plan_id: payload.plan_id,
+            start_date: payload.start_date,
+          }),
+        });
 
-        // Update user's balance in profiles table
-        const currentBalance = Number(existingProfile?.balance || 0);
-        const newBalance = currentBalance + payload.amount;
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to create investor");
+        }
 
-        const { error: balanceError } = await supabase
-          .from("profiles")
-          .update({ balance: newBalance })
-          .eq("id", userId);
+        const result = await response.json();
+        console.log("Server response for new investor:", result);
 
-        if (balanceError) throw balanceError;
+        if (!result.ok || !result.data?.investment) {
+          throw new Error("Unexpected server response format");
+        }
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+    onSuccess: async () => {
+      console.log("Save successful, invalidating queries...");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-investors"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-investments"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["investments"] })
+      ]);
+      
+      // Explicitly refetch to ensure UI is updated
+      await queryClient.refetchQueries({ queryKey: ["admin-investors"] });
+      
       toast({
         title: "Success",
         description: investor

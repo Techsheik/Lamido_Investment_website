@@ -8,73 +8,52 @@ import { format } from "date-fns";
 import { Pencil, CheckCircle, X } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { EditInvestmentDialog } from "@/components/admin/EditInvestmentDialog";
 
 const AdminInvestments = () => {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [editingInvestment, setEditingInvestment] = useState<any>(null);
 
   const { data: investments, isLoading } = useQuery({
     queryKey: ["admin-investments"],
+    refetchInterval: 10000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("investments")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching investments:", error);
-        throw error;
+      const response = await fetch("/api/admin/get-investments");
+      if (!response.ok) {
+        throw new Error("Failed to fetch investments from admin API");
       }
+      const data = await response.json();
 
-      if (!data || data.length === 0) {
-        console.log("No investments found");
-        return [];
-      }
-
-      const userIds = [...new Set(data.map((inv: any) => inv.user_id))];
-      const { data: profiles, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, name, user_code, balance, weekly_roi_percentage, account_holder_name, bank_name, bank_account_number, routing_number")
-        .in("id", userIds);
-
-      if (profileError) {
-        console.error("Error fetching profiles:", profileError);
-        return data;
-      }
-
-      const profileMap = profiles?.reduce((acc: any, p: any) => {
-        acc[p.id] = p;
-        return acc;
-      }, {}) || {};
-
-      return data.map((inv: any) => ({
-        ...inv,
-        profiles: profileMap[inv.user_id] || null,
-      }));
+      return (data || [])
+        .map((inv: any) => ({
+          ...inv,
+          profile: Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles,
+        }));
     },
   });
 
   const completeInvestmentMutation = useMutation({
     mutationFn: async (investment: any) => {
-      const weeklyRoiPercentage = investment.profiles?.weekly_roi_percentage || 10;
-      const roiAmount = Number(investment.amount) * (Number(weeklyRoiPercentage) / 100);
+      const roiPercentage = investment.roi || investment.profile?.weekly_roi_percentage || 10;
+      const roiAmount = Number(investment.amount) * (Number(roiPercentage) / 100);
 
-      const { error: invError } = await supabase
-        .from("investments")
-        .update({ status: "completed" })
-        .eq("id", investment.id);
+      const response = await fetch("/api/admin/update-investment-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investmentId: investment.id,
+          status: "completed",
+          roiAmount: roiAmount
+        }),
+      });
 
-      if (invError) throw invError;
-
-      const newBalance = Number(investment.profiles.balance) + roiAmount;
-      const { error: balanceError } = await supabase
-        .from("profiles")
-        .update({ balance: newBalance })
-        .eq("id", investment.user_id);
-
-      if (balanceError) throw balanceError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to complete investment");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
@@ -95,22 +74,18 @@ const AdminInvestments = () => {
 
   const rejectInvestmentMutation = useMutation({
     mutationFn: async (investment: any) => {
-      const { error: invError } = await supabase
-        .from("investments")
-        .update({ status: "rejected" })
-        .eq("id", investment.id);
+      const response = await fetch("/api/admin/update-investment-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investmentId: investment.id,
+          status: "rejected"
+        }),
+      });
 
-      if (invError) throw invError;
-
-      if (investment.status === "pending") {
-        const currentBalance = Number(investment.profiles.balance || 0);
-        const newBalance = currentBalance - Number(investment.amount);
-        const { error: balanceError } = await supabase
-          .from("profiles")
-          .update({ balance: newBalance })
-          .eq("id", investment.user_id);
-
-        if (balanceError) throw balanceError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to reject investment");
       }
     },
     onSuccess: () => {
@@ -162,11 +137,11 @@ const AdminInvestments = () => {
               {investments && investments.length > 0 ? (
                 investments.map((investment: any) => (
                   <TableRow key={investment.id}>
-                    <TableCell>{investment.profiles?.name}</TableCell>
-                    <TableCell className="font-mono">{investment.profiles?.user_code}</TableCell>
+                    <TableCell>{investment.profile?.name}</TableCell>
+                    <TableCell className="font-mono">{investment.profile?.user_code}</TableCell>
                     <TableCell className="capitalize">{investment.type}</TableCell>
                     <TableCell>${Number(investment.amount).toFixed(2)}</TableCell>
-                    <TableCell>{Number(investment.profiles?.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
+                    <TableCell>{Number(investment.roi || investment.profile?.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
                     <TableCell>{investment.duration} days</TableCell>
                     <TableCell>{format(new Date(investment.start_date), "MMM dd, yyyy")}</TableCell>
                     <TableCell>
