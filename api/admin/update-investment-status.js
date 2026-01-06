@@ -21,10 +21,19 @@ export default async function handler(req, res) {
 
     console.log(`Updating investment ${investmentId} to status ${status}...`);
 
+    const updateFields = { status };
+    if (status === "active") {
+      const now = new Date();
+      updateFields.start_date = now.toISOString();
+      // Most plans are 7 days based on the migrations and UI
+      const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+      updateFields.end_date = endDate.toISOString();
+    }
+
     // 1. Update investment status
     const { data: investment, error: invError } = await supabaseAdmin
       .from("investments")
-      .update({ status })
+      .update(updateFields)
       .eq("id", investmentId)
       .select("*, profiles:user_id(balance)")
       .single();

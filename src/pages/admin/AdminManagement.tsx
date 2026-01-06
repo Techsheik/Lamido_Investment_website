@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,37 +19,24 @@ const AdminManagement = () => {
   const { data: admins, isLoading } = useQuery({
     queryKey: ["admin-management"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select(`
-          *,
-          profiles (
-            id,
-            name,
-            email,
-            created_at,
-            account_status
-          )
-        `)
-        .eq("role", "admin");
-
-      return data?.map((item: any) => ({
-        ...item.profiles,
-        role_id: item.id,
-        user_id: item.user_id,
-      })) || [];
+      const response = await fetch("/api/admin/manage-admins");
+      if (!response.ok) throw new Error("Failed to fetch admins");
+      return await response.json();
     },
   });
 
   const removeAdminMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const { error } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq("user_id", userId)
-        .eq("role", "admin");
+      const response = await fetch("/api/admin/manage-admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", userId }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to remove admin access");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-management"] });

@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -22,7 +20,7 @@ interface AddAdminDialogProps {
 export function AddAdminDialog({ open, onOpenChange }: AddAdminDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { register, handleSubmit, reset, watch } = useForm({
+  const { register, handleSubmit, reset } = useForm({
     defaultValues: {
       name: "",
       email: "",
@@ -32,44 +30,15 @@ export function AddAdminDialog({ open, onOpenChange }: AddAdminDialogProps) {
 
   const createAdminMutation = useMutation({
     mutationFn: async (data: any) => {
-      // Step 1: Create auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            name: data.name,
-          },
-        },
+      const response = await fetch("/api/admin/create-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create user");
-
-      // Step 2: Update profile with active status (profile auto-created by trigger)
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ account_status: "active" })
-        .eq("id", authData.user.id);
-
-      if (profileError) throw profileError;
-
-      // Step 3: Assign admin role
-      const { error: roleError } = await supabase.from("user_roles").insert({
-        user_id: authData.user.id,
-        role: "admin",
-      });
-
-      if (roleError) throw roleError;
-
-      // Step 4: Auto-confirm email
-      const { error: updateError } = await supabase.auth.admin.updateUserById(
-        authData.user.id,
-        { email_confirmed_at: new Date().toISOString() }
-      );
-
-      if (updateError) {
-        console.warn("Could not auto-confirm email, but admin was created");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create admin");
       }
     },
     onSuccess: () => {

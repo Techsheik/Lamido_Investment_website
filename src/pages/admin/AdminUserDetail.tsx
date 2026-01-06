@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save, Download } from "lucide-react";
+import { ArrowLeft, Save, Download, Check, X } from "lucide-react";
 import { format } from "date-fns";
 
 const AdminUserDetail = () => {
@@ -24,31 +23,31 @@ const AdminUserDetail = () => {
   const [formData, setFormData] = useState<any>({});
   const [bankData, setBankData] = useState<any>({});
 
-  const { data: user, isLoading } = useQuery({
+  const { data: userDetail, isLoading } = useQuery({
     queryKey: ["admin-user-detail", userId],
     queryFn: async () => {
       if (!userId) return null;
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
-      if (data) {
+      const response = await fetch(`/api/admin/get-user-detail?userId=${userId}`);
+      if (!response.ok) throw new Error("Failed to fetch user detail");
+      const data = await response.json();
+      
+      if (data.profile) {
         setFormData({
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          balance: data.balance,
-          total_roi: data.total_roi,
-          accrued_return: data.accrued_return || 0,
-          roi_percentage: data.roi_percentage,
-          weekly_roi_percentage: data.weekly_roi_percentage,
-          account_status: data.account_status,
+          name: data.profile.name,
+          email: data.profile.email,
+          phone: data.profile.phone,
+          balance: data.profile.balance,
+          total_invested: data.profile.total_invested || 0,
+          total_roi: data.profile.total_roi,
+          accrued_return: data.profile.accrued_return || 0,
+          roi_percentage: data.profile.roi_percentage,
+          weekly_roi_percentage: data.profile.weekly_roi_percentage,
+          account_status: data.profile.account_status,
         });
         setBankData({
-          bank_name: data.bank_name || "",
-          account_number: data.account_number || "",
-          account_holder_name: data.account_holder_name || "",
+          bank_name: data.profile.bank_name || "",
+          account_number: data.profile.account_number || "",
+          account_holder_name: data.profile.account_holder_name || "",
         });
       }
       return data;
@@ -56,52 +55,29 @@ const AdminUserDetail = () => {
     enabled: !!userId,
   });
 
-  const { data: transactions } = useQuery({
-    queryKey: ["user-transactions", userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const { data } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-      return data || [];
-    },
-    enabled: !!userId,
-  });
-
-  const { data: investments } = useQuery({
-    queryKey: ["user-investments", userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const { data } = await supabase
-        .from("investments")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-      return data || [];
-    },
-    enabled: !!userId,
-  });
+  const user = userDetail?.profile;
+  const transactions = userDetail?.transactions;
+  const investments = userDetail?.investments;
 
   const updateUserMutation = useMutation({
     mutationFn: async (data: any) => {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          ...data.profile,
-          ...data.bank,
-        })
-        .eq("id", userId);
-      if (error) throw error;
+      const response = await fetch("/api/admin/update-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: userId,
+          ...data,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update user");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      queryClient.invalidateQueries({ queryKey: ["user-profile", userId] });
-      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
-      queryClient.invalidateQueries({ queryKey: ["investments", userId] });
-      queryClient.invalidateQueries({ queryKey: ["investments"] });
       toast({
         title: "Success",
         description: "User details updated successfully",
@@ -116,29 +92,32 @@ const AdminUserDetail = () => {
     },
   });
 
-  const approveTransactionMutation = useMutation({
-    mutationFn: async (transactionId: string) => {
-      const { error } = await supabase
-        .from("transactions")
-        .update({ status: "completed", approved_at: new Date().toISOString() })
-        .eq("id", transactionId);
-      if (error) throw error;
+  const updateTransactionMutation = useMutation({
+    mutationFn: async ({ id, status, amount, type }: { id: string; status: string; amount: number; type: string }) => {
+      const response = await fetch("/api/admin/update-transaction-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          status,
+          amount,
+          type,
+          userId,
+          currentBalance: user?.balance || 0
+        }),
+      });
 
-      const transaction = transactions?.find((t: any) => t.id === transactionId);
-      if (transaction?.type === "deposit") {
-        const currentBalance = Number(user?.balance || 0);
-        await supabase
-          .from("profiles")
-          .update({ balance: currentBalance + Number(transaction.amount) })
-          .eq("id", userId);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update transaction");
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-transactions", userId] });
       queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
       toast({
         title: "Success",
-        description: "Payment approved and balance updated",
+        description: "Transaction updated successfully",
       });
     },
     onError: (error: any) => {
@@ -150,19 +129,27 @@ const AdminUserDetail = () => {
     },
   });
 
-  const rejectTransactionMutation = useMutation({
-    mutationFn: async (transactionId: string) => {
-      const { error } = await supabase
-        .from("transactions")
-        .update({ status: "rejected" })
-        .eq("id", transactionId);
-      if (error) throw error;
+  const activateInvestmentMutation = useMutation({
+    mutationFn: async (investmentId: string) => {
+      const response = await fetch("/api/admin/update-investment-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investmentId,
+          status: "active"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to activate investment");
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-transactions", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
       toast({
         title: "Success",
-        description: "Payment rejected",
+        description: "Investment activated successfully",
       });
     },
     onError: (error: any) => {
@@ -184,8 +171,8 @@ const AdminUserDetail = () => {
 
   const handleSave = () => {
     updateUserMutation.mutate({
-      profile: formData,
-      bank: bankData,
+      ...formData,
+      ...bankData,
     });
   };
 
@@ -219,7 +206,7 @@ const AdminUserDetail = () => {
               <CardTitle className="text-sm">Total Invested</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${totalInvested.toFixed(2)}</div>
+              <div className="text-2xl font-bold">${Number(user?.total_invested || totalInvested || 0).toFixed(2)}</div>
             </CardContent>
           </Card>
 
@@ -244,7 +231,6 @@ const AdminUserDetail = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* User Profile Section */}
             <Card>
               <CardHeader>
                 <CardTitle>User Profile</CardTitle>
@@ -253,11 +239,11 @@ const AdminUserDetail = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Name</Label>
-                    <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                    <Input value={formData.name || ""} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                   </div>
                   <div>
                     <Label>Email</Label>
-                    <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                    <Input type="email" value={formData.email || ""} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -282,7 +268,6 @@ const AdminUserDetail = () => {
               </CardContent>
             </Card>
 
-            {/* Financial Metrics Section */}
             <Card>
               <CardHeader>
                 <CardTitle>Financial Metrics</CardTitle>
@@ -295,8 +280,17 @@ const AdminUserDetail = () => {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.balance}
+                      value={formData.balance || 0}
                       onChange={(e) => setFormData({ ...formData, balance: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Total Invested ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.total_invested || 0}
+                      onChange={(e) => setFormData({ ...formData, total_invested: parseFloat(e.target.value) })}
                     />
                   </div>
                   <div>
@@ -304,7 +298,7 @@ const AdminUserDetail = () => {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.total_roi}
+                      value={formData.total_roi || 0}
                       onChange={(e) => setFormData({ ...formData, total_roi: parseFloat(e.target.value) })}
                     />
                   </div>
@@ -313,10 +307,9 @@ const AdminUserDetail = () => {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.accrued_return}
+                      value={formData.accrued_return || 0}
                       onChange={(e) => setFormData({ ...formData, accrued_return: parseFloat(e.target.value) })}
                     />
-                    <p className="text-xs text-muted-foreground">Weekly returns accrued (7+ days)</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -325,7 +318,7 @@ const AdminUserDetail = () => {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formData.roi_percentage}
+                      value={formData.roi_percentage || 0}
                       onChange={(e) => setFormData({ ...formData, roi_percentage: parseFloat(e.target.value) })}
                     />
                   </div>
@@ -336,33 +329,30 @@ const AdminUserDetail = () => {
                       step="0.01"
                       min="0"
                       max="100"
-                      value={formData.weekly_roi_percentage}
+                      value={formData.weekly_roi_percentage || 0}
                       onChange={(e) => setFormData({ ...formData, weekly_roi_percentage: parseFloat(e.target.value) })}
                     />
-                    <p className="text-xs text-muted-foreground">Market-based weekly return percentage</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Bank Details Section */}
             <Card>
               <CardHeader>
                 <CardTitle>Bank Details for Payouts</CardTitle>
-                <CardDescription>Where to send ROI and withdrawal returns</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <Label>Bank Name</Label>
-                  <Input value={bankData.bank_name} onChange={(e) => setBankData({ ...bankData, bank_name: e.target.value })} />
+                  <Input value={bankData.bank_name || ""} onChange={(e) => setBankData({ ...bankData, bank_name: e.target.value })} />
                 </div>
                 <div>
                   <Label>Account Number</Label>
-                  <Input value={bankData.account_number} onChange={(e) => setBankData({ ...bankData, account_number: e.target.value })} />
+                  <Input value={bankData.account_number || ""} onChange={(e) => setBankData({ ...bankData, account_number: e.target.value })} />
                 </div>
                 <div>
                   <Label>Account Holder Name</Label>
-                  <Input value={bankData.account_holder_name} onChange={(e) => setBankData({ ...bankData, account_holder_name: e.target.value })} />
+                  <Input value={bankData.account_holder_name || ""} onChange={(e) => setBankData({ ...bankData, account_holder_name: e.target.value })} />
                 </div>
                 <Button onClick={handleSave} className="w-full">
                   <Save className="h-4 w-4 mr-2" />
@@ -372,9 +362,7 @@ const AdminUserDetail = () => {
             </Card>
           </div>
 
-          {/* Transactions Sidebar */}
           <div className="space-y-6">
-            {/* Pending Payments */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Pending Payments</CardTitle>
@@ -385,7 +373,6 @@ const AdminUserDetail = () => {
                 ) : (
                   transactions
                     ?.filter((t: any) => t.status === "pending" && t.type === "deposit")
-                    .slice(0, 5)
                     .map((transaction: any) => (
                       <div key={transaction.id} className="border rounded p-2 space-y-2">
                         <div className="flex justify-between items-start">
@@ -398,19 +385,26 @@ const AdminUserDetail = () => {
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            variant="default"
-                            className="flex-1"
-                            onClick={() => approveTransactionMutation.mutate(transaction.id)}
+                            onClick={() => updateTransactionMutation.mutate({
+                              id: transaction.id,
+                              status: "approved",
+                              amount: transaction.amount,
+                              type: transaction.type
+                            })}
                           >
-                            Approve
+                            <Check className="h-4 w-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            className="flex-1"
-                            onClick={() => rejectTransactionMutation.mutate(transaction.id)}
+                            onClick={() => updateTransactionMutation.mutate({
+                              id: transaction.id,
+                              status: "rejected",
+                              amount: transaction.amount,
+                              type: transaction.type
+                            })}
                           >
-                            Reject
+                            <X className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -419,85 +413,46 @@ const AdminUserDetail = () => {
               </CardContent>
             </Card>
 
-            {/* Recent Transactions */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Recent Transactions</CardTitle>
+                <CardTitle className="text-lg">Recent Investments</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {!transactions || transactions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No transactions</p>
-                  ) : (
-                    transactions.slice(0, 10).map((transaction: any) => (
-                      <div key={transaction.id} className="border-b pb-2 last:border-b-0">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-sm font-medium capitalize">{transaction.type}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(transaction.created_at), "MMM dd, yyyy")}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">${Number(transaction.amount).toFixed(2)}</p>
-                            <Badge variant={transaction.status === "completed" ? "default" : "secondary"} className="text-xs">
-                              {transaction.status}
-                            </Badge>
-                          </div>
+                <div className="space-y-4">
+                  {investments?.slice(0, 5).map((inv: any) => (
+                    <div key={inv.id} className="text-sm border-b pb-2 last:border-0">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold">${Number(inv.amount).toFixed(2)}</span>
+                        <div className="flex gap-2 items-center">
+                          {(inv.status === "pending" || inv.status === "approved") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[10px] px-2"
+                              onClick={() => activateInvestmentMutation.mutate(inv.id)}
+                            >
+                              Activate
+                            </Button>
+                          )}
+                          <Badge 
+                            variant={(inv.status === "active" || inv.status === "approved") ? "default" : inv.status === "suspended" ? "destructive" : "secondary"}
+                            className={
+                              inv.status === "approved" ? "bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200" : 
+                              inv.status === "suspended" ? "bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200" : ""
+                            }
+                          >
+                            {inv.status}
+                          </Badge>
                         </div>
                       </div>
-                    ))
-                  )}
+                      <p className="text-xs text-muted-foreground">{format(new Date(inv.created_at), "MMM dd, yyyy")}</p>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           </div>
         </div>
-
-        {/* All Transactions Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>All Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {!transactions || transactions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-4">
-                        No transactions
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    transactions.map((transaction: any) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell className="text-sm">{format(new Date(transaction.created_at), "MMM dd, yyyy")}</TableCell>
-                        <TableCell className="capitalize text-sm">{transaction.type}</TableCell>
-                        <TableCell className="font-semibold">${Number(transaction.amount).toFixed(2)}</TableCell>
-                        <TableCell className="text-xs font-mono">{transaction.reference || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={transaction.status === "completed" ? "default" : transaction.status === "rejected" ? "destructive" : "secondary"}>
-                            {transaction.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </AdminLayout>
   );

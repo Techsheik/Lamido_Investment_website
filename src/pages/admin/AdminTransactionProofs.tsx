@@ -77,19 +77,44 @@ const AdminTransactionProofs = () => {
           .single();
 
         if (transactionData?.user_id) {
-          // Activate pending investment - reset dates so progress starts from 0%
-          const now = new Date();
-          const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
-
-          await supabase
+          // Activate the most recent pending investment for this user
+          // First try to match by amount
+          let { data: pendingInvestments } = await supabase
             .from("investments")
-            .update({
-              status: "active",
-              start_date: now.toISOString(),
-              end_date: endDate.toISOString(),
-            })
+            .select("id")
             .eq("user_id", transactionData.user_id)
-            .eq("status", "pending");
+            .eq("status", "pending")
+            .eq("amount", transactionData.amount)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          // If no exact amount match, take the most recent pending one
+          if (!pendingInvestments || pendingInvestments.length === 0) {
+            const { data: anyPending } = await supabase
+              .from("investments")
+              .select("id")
+              .eq("user_id", transactionData.user_id)
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+              .limit(1);
+            pendingInvestments = anyPending;
+          }
+
+          const invToActivate = pendingInvestments?.[0]?.id;
+
+          if (invToActivate) {
+            const now = new Date();
+            const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+
+            await supabase
+              .from("investments")
+              .update({
+                status: "active",
+                start_date: now.toISOString(),
+                end_date: endDate.toISOString(),
+              })
+              .eq("id", invToActivate);
+          }
         }
       }
     },

@@ -35,6 +35,7 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
       email: user.email,
       phone: user.phone || "",
       balance: user.balance || 0,
+      total_invested: user.total_invested || 0,
       total_roi: user.total_roi || 0,
       roi_percentage: user.roi_percentage || 0,
       weekly_roi_percentage: user.weekly_roi_percentage || 10,
@@ -44,21 +45,23 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
 
   const updateUserMutation = useMutation({
     mutationFn: async (data: any) => {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          balance: data.balance,
-          total_roi: data.total_roi,
-          roi_percentage: data.roi_percentage,
-          weekly_roi_percentage: data.weekly_roi_percentage,
-          account_status: data.account_status,
-        })
-        .eq("id", user.id);
+      const response = await fetch("/api/admin/update-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: user.id,
+          ...data
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update user");
+      }
+
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
@@ -111,6 +114,10 @@ export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps
           <div className="space-y-2">
             <Label htmlFor="balance">Balance</Label>
             <Input id="balance" type="number" step="0.01" {...register("balance", { valueAsNumber: true })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="total_invested">Total Invested ($)</Label>
+            <Input id="total_invested" type="number" step="0.01" {...register("total_invested", { valueAsNumber: true })} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="total_roi">Total ROI ($)</Label>

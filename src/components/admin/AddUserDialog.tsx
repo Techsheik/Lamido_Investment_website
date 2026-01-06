@@ -56,53 +56,20 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
 
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {
-      // Step 1: Create auth account with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            name: data.name,
-          },
-        },
+      const userCode = generateUserCode(data.name);
+      const response = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          user_code: userCode,
+          weekly_roi_percentage: 10.0,
+        }),
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create user account");
-
-      // Step 3: Update the profile with additional fields - with retry logic
-      const userCode = generateUserCode(data.name);
-      let profileSynced = false;
-      for (let i = 0; i < 5; i++) {
-        const { data: profileResult, error: updateError } = await supabase
-          .from("profiles")
-          .upsert({
-            id: authData.user.id,
-            name: data.name,
-            email: data.email,
-            phone: data.phone,
-            balance: Number(data.balance) || 0,
-            account_status: data.account_status || "active",
-            country: data.country,
-            state: data.state,
-            lga: data.lga,
-            user_code: userCode,
-            weekly_roi_percentage: 10.0,
-          })
-          .select();
-
-        if (!updateError && profileResult && profileResult.length > 0) {
-          profileSynced = true;
-          break;
-        }
-        
-        console.warn(`AddUser profile sync attempt ${i + 1} failed, retrying...`, updateError);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      if (!profileSynced) {
-        throw new Error("Failed to create user profile after multiple attempts.");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create user");
       }
     },
     onSuccess: () => {

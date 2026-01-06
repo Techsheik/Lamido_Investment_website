@@ -37,15 +37,20 @@ export function EditInvestmentDialog({
 
   const updateInvestmentMutation = useMutation({
     mutationFn: async (data: any) => {
-      const { error } = await supabase
-        .from("investments")
-        .update({
+      const response = await fetch("/api/admin/update-investment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: investment.id,
           roi: data.roi,
           duration: data.duration,
-        })
-        .eq("id", investment.id);
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update investment");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });

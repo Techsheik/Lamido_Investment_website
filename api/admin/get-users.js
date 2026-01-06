@@ -6,6 +6,11 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Missing environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+      return res.status(500).json({ error: "Server misconfiguration: missing Supabase environment variables" });
+    }
+
     const supabaseAdmin = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY

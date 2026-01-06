@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -22,25 +21,25 @@ const AdminPlanBuilder = () => {
   const { data: plans, isLoading } = useQuery({
     queryKey: ["admin-plans"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("investment_plans")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return data;
+      const response = await fetch("/api/admin/get-plans");
+      if (!response.ok) throw new Error("Failed to fetch plans");
+      return await response.json();
     },
   });
 
   // Delete plan mutation
   const deletePlanMutation = useMutation({
     mutationFn: async (planId: string) => {
-      const { error } = await supabase
-        .from("investment_plans")
-        .delete()
-        .eq("id", planId);
+      const response = await fetch("/api/admin/delete-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: planId }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete plan");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });

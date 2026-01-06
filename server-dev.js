@@ -18,6 +18,8 @@ import updateTransactionStatusHandler from "./api/admin/update-transaction-statu
 import getUsersHandler from "./api/admin/get-users.js";
 import deleteUserHandler from "./api/admin/delete-user.js";
 import getStatsHandler from "./api/admin/get-stats.js";
+import updateUserHandler from "./api/admin/update-user.js";
+import bulkActivateInvestmentsHandler from "./api/admin/bulk-activate-investments.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,36 +28,28 @@ if (fs.existsSync(envPath)) {
   console.log(`📝 Reading .env from: ${envPath}`);
   const envContent = fs.readFileSync(envPath, "utf-8");
   const lines = envContent.split("\n");
-  console.log(`📝 .env has ${lines.length} lines`);
   
-  lines.forEach((line, idx) => {
+  lines.forEach((line) => {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith("#")) {
       const eqIndex = trimmed.indexOf("=");
       if (eqIndex > -1) {
         const key = trimmed.substring(0, eqIndex).trim();
         let value = trimmed.substring(eqIndex + 1).trim();
-        // Remove surrounding quotes
         if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1);
         }
-        if (key) {
-          process.env[key] = value;
-          if (key.includes("SUPABASE")) {
-            console.log(`  ✓ Set ${key} = ${value.substring(0, 50)}...`);
-          }
-        }
+        if (key) process.env[key] = value;
       }
     }
   });
   console.log("✓ Loaded environment variables from .env");
-  console.log(`  - SUPABASE_URL: ${process.env.SUPABASE_URL ? '✓ set' : '✗ missing'}`);
-  console.log(`  - SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '✓ set' : '✗ missing'}`);
 } else {
   console.warn(`⚠ .env file not found at ${envPath}`);
 }
 
 const PORT = 3000;
+const HOST = "127.0.0.1";
 
 // Try to use express if available; otherwise fall back to a minimal http server
 try {
@@ -64,12 +58,9 @@ try {
   const app = express();
   app.use(express.json());
 
-  // Log env vars on each request for debugging
+  // Log all requests
   app.use((req, res, next) => {
-    if (req.path.startsWith("/api")) {
-      console.log("[req] SUPABASE_URL:", process.env.SUPABASE_URL ? "<set>" : "<missing>");
-      console.log("[req] SUPABASE_SERVICE_ROLE_KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "<set>" : "<missing>");
-    }
+    console.log(`[${new Date().toLocaleTimeString()}] API Request: ${req.method} ${req.path}`);
     next();
   });
 
@@ -84,208 +75,101 @@ try {
   app.get("/api/admin/get-users", getUsersHandler);
   app.post("/api/admin/delete-user", deleteUserHandler);
   app.get("/api/admin/get-stats", getStatsHandler);
+  app.post("/api/admin/update-user", updateUserHandler);
+  app.post("/api/admin/bulk-activate-investments", bulkActivateInvestmentsHandler);
 
-  app.get("/health", (req, res) => {
-    res.json({ status: "ok" });
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", api: "available", server: "express" });
   });
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Local API server running on http://localhost:${PORT}`);
-    console.log(`   /api/admin/create-investor is available`);
-    console.log(`   Vite dev server (port 8080) will proxy /api requests here`);
-    console.log(`Server PID: ${process.pid}`);
-    // Keep the process alive for interactive debugging
-    if (typeof process.stdin.resume === 'function') process.stdin.resume();
+  // Catch-all 404 for /api routes
+  app.use("/api/*", (req, res) => {
+    console.warn(`⚠ 404: Route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+  });
+
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 Local API server running on http://${HOST}:${PORT}`);
+    console.log(`   Vite dev server will proxy /api requests here`);
   });
 } catch (e) {
-  console.warn("express not found, falling back to built-in http server:", e.message);
+  console.warn("express not found, falling back to built-in http server");
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
+      console.log(`[${new Date().toLocaleTimeString()}] API Request: ${req.method} ${url.pathname}`);
 
-      if (req.method === "GET" && url.pathname === "/health") {
+      if (url.pathname === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "ok" }));
+        res.end(JSON.stringify({ status: "ok", api: "available", server: "fallback" }));
         return;
       }
 
-      if (req.method === "POST" && url.pathname === "/api/admin/create-investor") {
-        console.log("[req] SUPABASE_URL:", process.env.SUPABASE_URL ? "<set>" : "<missing>");
-        console.log("[req] SUPABASE_SERVICE_ROLE_KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "<set>" : "<missing>");
-        let body = "";
-        for await (const chunk of req) body += chunk;
+      // Route mapping
+      const routes = {
+        "GET": {
+          "/api/admin/get-investments": getInvestmentsHandler,
+          "/api/admin/get-transactions": getTransactionsHandler,
+          "/api/admin/get-users": getUsersHandler,
+          "/api/admin/get-stats": getStatsHandler,
+        },
+        "POST": {
+          "/api/admin/create-investor": createInvestorHandler,
+          "/api/admin/update-investment-status": updateInvestmentStatusHandler,
+          "/api/admin/edit-investor": editInvestorHandler,
+          "/api/admin/delete-investor": deleteInvestorHandler,
+          "/api/admin/update-transaction-status": updateTransactionStatusHandler,
+          "/api/admin/delete-user": deleteUserHandler,
+          "/api/admin/update-user": updateUserHandler,
+          "/api/admin/bulk-activate-investments": bulkActivateInvestmentsHandler,
+        }
+      };
+
+      const handler = routes[req.method]?.[url.pathname];
+
+      if (handler) {
+        if (req.method === "POST") {
+          let body = "";
+          for await (const chunk of req) body += chunk;
+          try {
+            req.body = body ? JSON.parse(body) : {};
+          } catch (err) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid JSON body" }));
+            return;
+          }
+        } else {
+          const query = {};
+          url.searchParams.forEach((value, key) => { query[key] = value; });
+          req.query = query;
+        }
+
+        let responded = false;
+        const resObj = {
+          status(code) { res.statusCode = code; return this; },
+          json(obj) {
+            if (responded) return;
+            responded = true;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(obj));
+          },
+        };
+
         try {
-          req.body = body ? JSON.parse(body) : {};
+          await handler(req, resObj);
+          return;
         } catch (err) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Invalid JSON" }));
+          console.error("Handler error:", err);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
           return;
         }
-
-        // Provide a minimal response object compatible with the handler
-        let responded = false;
-        const resObj = {
-          status(code) {
-            res.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            if (responded) return;
-            responded = true;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(obj));
-          },
-        };
-
-        try {
-          await createInvestorHandler(req, resObj);
-          if (!responded) res.end();
-        } catch (err) {
-          console.error("Handler error:", err);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
-        }
-        return;
       }
 
-      if (req.method === "GET" && url.pathname === "/api/admin/get-investments") {
-        // Provide a minimal response object compatible with the handler
-        let responded = false;
-        const resObj = {
-          status(code) {
-            res.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            if (responded) return;
-            responded = true;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(obj));
-          },
-        };
-
-        try {
-          await getInvestmentsHandler(req, resObj);
-          if (!responded) res.end();
-        } catch (err) {
-          console.error("Handler error:", err);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
-        }
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/admin/update-investment-status") {
-        let body = "";
-        for await (const chunk of req) body += chunk;
-        try {
-          req.body = body ? JSON.parse(body) : {};
-        } catch (err) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Invalid JSON" }));
-          return;
-        }
-
-        let responded = false;
-        const resObj = {
-          status(code) {
-            res.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            if (responded) return;
-            responded = true;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(obj));
-          },
-        };
-
-        try {
-          await updateInvestmentStatusHandler(req, resObj);
-          if (!responded) res.end();
-        } catch (err) {
-          console.error("Handler error:", err);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
-        }
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/admin/edit-investor") {
-        let body = "";
-        for await (const chunk of req) body += chunk;
-        try {
-          req.body = body ? JSON.parse(body) : {};
-        } catch (err) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Invalid JSON" }));
-          return;
-        }
-
-        let responded = false;
-        const resObj = {
-          status(code) {
-            res.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            if (responded) return;
-            responded = true;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(obj));
-          },
-        };
-
-        try {
-          await editInvestorHandler(req, resObj);
-          if (!responded) res.end();
-        } catch (err) {
-          console.error("Handler error:", err);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
-        }
-        return;
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/admin/delete-investor") {
-        let body = "";
-        for await (const chunk of req) body += chunk;
-        try {
-          req.body = body ? JSON.parse(body) : {};
-        } catch (err) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Invalid JSON" }));
-          return;
-        }
-
-        let responded = false;
-        const resObj = {
-          status(code) {
-            res.statusCode = code;
-            return this;
-          },
-          json(obj) {
-            if (responded) return;
-            responded = true;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(obj));
-          },
-        };
-
-        try {
-          await deleteInvestorHandler(req, resObj);
-          if (!responded) res.end();
-        } catch (err) {
-          console.error("Handler error:", err);
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message || "Internal server error" }));
-        }
-        return;
-      }
-
-      res.writeHead(404);
-      res.end();
+      console.warn(`⚠ 404: Route not found: ${req.method} ${url.pathname}`);
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `API route not found: ${req.method} ${url.pathname}` }));
     } catch (err) {
       console.error("Server error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -293,11 +177,7 @@ try {
     }
   });
 
-  server.listen(PORT, () => {
-    console.log(`🚀 Local API server running on http://localhost:${PORT} (http fallback)`);
-    console.log(`   /api/admin/create-investor is available`);
-    console.log(`   Vite dev server (port 8080) will proxy /api requests here`);
-    console.log(`Server PID: ${process.pid}`);
-    if (typeof process.stdin.resume === 'function') process.stdin.resume();
+  server.listen(PORT, HOST, () => {
+    console.log(`🚀 Local API server running on http://${HOST}:${PORT} (fallback mode)`);
   });
 }

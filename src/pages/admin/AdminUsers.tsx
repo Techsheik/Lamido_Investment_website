@@ -100,8 +100,8 @@ const AdminUsers = () => {
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>${Number(user.balance || 0).toFixed(2)}</TableCell>
-                  <TableCell>${user.totalInvested.toFixed(2)}</TableCell>
-                  <TableCell>${user.totalROI.toFixed(2)}</TableCell>
+                  <TableCell>${Number(user.total_invested || user.totalInvested || 0).toFixed(2)}</TableCell>
+                  <TableCell>${Number(user.total_roi || user.totalROI || 0).toFixed(2)}</TableCell>
                   <TableCell>{Number(user.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
                   <TableCell>
                     <Badge variant={user.account_status === "active" ? "default" : "secondary"}>

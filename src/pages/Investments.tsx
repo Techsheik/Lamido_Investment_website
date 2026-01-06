@@ -192,9 +192,9 @@ const Investments = () => {
         {activeInvestments && activeInvestments.length > 0 ? (
           <div className="grid gap-6">
             {activeInvestments.map((investment) => {
-              const startDate = new Date(investment.start_date);
+              const startDate = new Date(investment.start_date || investment.created_at);
               const duration = investment.duration || 7;
-              const endDate = new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
+              const endDate = investment.end_date ? new Date(investment.end_date) : new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
               const now = new Date();
               
               const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
@@ -213,7 +213,7 @@ const Investments = () => {
                           Started {startDate.toLocaleDateString()}
                         </p>
                       </div>
-                      <Badge variant={investment.status === "active" ? "default" : "secondary"}>
+                      <Badge variant={(investment.status === "active" || investment.status === "approved") ? "default" : investment.status === "suspended" ? "destructive" : "secondary"}>
                         {investment.status}
                       </Badge>
                     </div>
@@ -240,7 +240,7 @@ const Investments = () => {
                       </div>
                     </div>
 
-                    {investment.status === "pending" && (
+                    {(investment.status === "pending") && (
                       <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                         <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
                           ⏳ Pending admin approval - progress will start once approved
@@ -248,24 +248,28 @@ const Investments = () => {
                       </div>
                     )}
 
-                    {investment.status === "active" && (
+                    {(investment.status === "active" || investment.status === "approved" || investment.status === "suspended") && (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Progress (Day {Math.min(daysElapsed, duration)} of {duration})</span>
+                          <span className="text-muted-foreground">
+                            {investment.status === "suspended" ? "Paused" : `Progress (Day ${Math.min(daysElapsed, duration)} of ${duration})`}
+                          </span>
                           <span className="font-medium">
-                            {daysRemaining > 0 ? `${daysRemaining} days remaining` : "Matured"}
+                            {investment.status === "suspended" ? "Suspended by admin" : (daysRemaining > 0 ? `${daysRemaining} days remaining` : "Matured")}
                           </span>
                         </div>
                         <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-500"
+                            className={`h-full rounded-full transition-all duration-500 ${investment.status === "suspended" ? "opacity-50" : ""}`}
                             style={{
                               width: `${progress}%`,
-                              background: progress < 33 ? 
+                              background: investment.status === "suspended" ? "#94a3b8" : (
+                                progress < 33 ? 
                                 'linear-gradient(90deg, #ef4444, #f97316)' :
                                 progress < 66 ?
                                 'linear-gradient(90deg, #f97316, #eab308)' :
                                 'linear-gradient(90deg, #eab308, #22c55e)'
+                              )
                             }}
                           />
                         </div>

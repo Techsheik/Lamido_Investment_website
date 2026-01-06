@@ -26,11 +26,9 @@ const AdminAnnouncements = () => {
   const { data: announcements, isLoading } = useQuery({
     queryKey: ["admin-announcements"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("announcements")
-        .select("*")
-        .order("created_at", { ascending: false });
-      return data || [];
+      const response = await fetch("/api/admin/announcements");
+      if (!response.ok) throw new Error("Failed to fetch announcements");
+      return await response.json();
     },
   });
 
@@ -41,14 +39,19 @@ const AdminAnnouncements = () => {
         throw new Error("Title and content are required");
       }
 
-      let imageUrl = null;
+      setUploading(true);
+      let imageUrl = imagePreview; // Use existing preview if any (e.g. from previous edit)
+      
       if (formData.image) {
         const fileName = `${Date.now()}-${formData.image.name}`;
         const { error: uploadError } = await supabase.storage
           .from("announcements")
           .upload(`${user.id}/${fileName}`, formData.image);
         
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          setUploading(false);
+          throw uploadError;
+        }
         
         const { data } = supabase.storage
           .from("announcements")
@@ -56,14 +59,22 @@ const AdminAnnouncements = () => {
         imageUrl = data.publicUrl;
       }
 
-      const { error } = await supabase.from("announcements").insert({
-        title: formData.title,
-        content: formData.content,
-        image_url: imageUrl,
-        created_by: user.id,
+      const response = await fetch("/api/admin/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formData.title,
+          content: formData.content,
+          image_url: imageUrl,
+          created_by: user.id,
+        }),
       });
 
-      if (error) throw error;
+      setUploading(false);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create announcement");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
@@ -88,14 +99,19 @@ const AdminAnnouncements = () => {
         throw new Error("Title and content are required");
       }
 
-      let imageUrl = null;
+      setUploading(true);
+      let imageUrl = imagePreview;
+      
       if (formData.image) {
         const fileName = `${Date.now()}-${formData.image.name}`;
         const { error: uploadError } = await supabase.storage
           .from("announcements")
           .upload(`${user?.id}/${fileName}`, formData.image);
         
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          setUploading(false);
+          throw uploadError;
+        }
         
         const { data } = supabase.storage
           .from("announcements")
@@ -103,19 +119,22 @@ const AdminAnnouncements = () => {
         imageUrl = data.publicUrl;
       }
 
-      const updateData: any = {
-        title: formData.title,
-        content: formData.content,
-        updated_at: new Date().toISOString(),
-      };
-      if (imageUrl) updateData.image_url = imageUrl;
+      const response = await fetch("/api/admin/announcements", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          title: formData.title,
+          content: formData.content,
+          image_url: imageUrl,
+        }),
+      });
 
-      const { error } = await supabase
-        .from("announcements")
-        .update(updateData)
-        .eq("id", editingId);
-
-      if (error) throw error;
+      setUploading(false);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update announcement");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
@@ -136,8 +155,16 @@ const AdminAnnouncements = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("announcements").delete().eq("id", id);
-      if (error) throw error;
+      const response = await fetch("/api/admin/announcements", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete announcement");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });

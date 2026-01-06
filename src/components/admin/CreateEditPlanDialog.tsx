@@ -82,21 +82,18 @@ export function CreateEditPlanDialog({
         is_active: true,
       };
 
-      if (plan) {
-        // Update existing plan
-        const { error } = await supabase
-          .from("investment_plans")
-          .update(payload)
-          .eq("id", plan.id);
+      const response = await fetch("/api/admin/update-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: plan?.id,
+          ...payload,
+        }),
+      });
 
-        if (error) throw error;
-      } else {
-        // Create new plan
-        const { error } = await supabase
-          .from("investment_plans")
-          .insert(payload);
-
-        if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save plan");
       }
     },
     onSuccess: () => {

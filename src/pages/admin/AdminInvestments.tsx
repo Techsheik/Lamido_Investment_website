@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Pencil, CheckCircle, X } from "lucide-react";
+import { Pencil, CheckCircle, X, Pause, Play } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,38 +35,73 @@ const AdminInvestments = () => {
     },
   });
 
-  const completeInvestmentMutation = useMutation({
-    mutationFn: async (investment: any) => {
-      const roiPercentage = investment.roi || investment.profile?.weekly_roi_percentage || 10;
-      const roiAmount = Number(investment.amount) * (Number(roiPercentage) / 100);
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ investment, status }: { investment: any; status: string }) => {
+      let roiAmount = 0;
+      if (status === "completed") {
+        const roiPercentage = investment.roi || investment.profile?.weekly_roi_percentage || 10;
+        roiAmount = Number(investment.amount) * (Number(roiPercentage) / 100);
+      }
 
       const response = await fetch("/api/admin/update-investment-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investmentId: investment.id,
-          status: "completed",
+          status: status,
           roiAmount: roiAmount
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to complete investment");
+        throw new Error(errorData.error || `Failed to update status to ${status}`);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       toast({
         title: "Success",
-        description: "Investment marked as completed and ROI added to user balance",
+        description: `Investment status updated to ${variables.status}`,
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to complete investment: " + error.message,
+        description: "Failed to update investment: " + error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const activateInvestmentMutation = useMutation({
+    mutationFn: async (investment: any) => {
+      const response = await fetch("/api/admin/update-investment-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investmentId: investment.id,
+          status: "active"
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to activate investment");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      toast({
+        title: "Success",
+        description: "Investment activated! Progress will now start counting.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to activate investment: " + error.message,
         variant: "destructive",
       });
     },
@@ -105,6 +140,34 @@ const AdminInvestments = () => {
     },
   });
 
+  const bulkActivateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/admin/bulk-activate-investments", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to bulk activate investments");
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      toast({
+        title: "Success",
+        description: `Successfully activated pending investments. Progress will now start for those users.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to bulk activate: " + error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   if (isLoading) {
     return (
       <AdminLayout>
@@ -116,7 +179,16 @@ const AdminInvestments = () => {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Investments Management</h1>
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Investments Management</h1>
+          <Button 
+            onClick={() => bulkActivateMutation.mutate()}
+            disabled={bulkActivateMutation.isPending || !investments?.some((i: any) => i.status === "pending" || i.status === "approved")}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {bulkActivateMutation.isPending ? "Activating..." : "Activate All Pending"}
+          </Button>
+        </div>
         
         <div className="rounded-lg border bg-card">
           <Table>
@@ -143,13 +215,23 @@ const AdminInvestments = () => {
                     <TableCell>${Number(investment.amount).toFixed(2)}</TableCell>
                     <TableCell>{Number(investment.roi || investment.profile?.weekly_roi_percentage || 10).toFixed(2)}%</TableCell>
                     <TableCell>{investment.duration} days</TableCell>
-                    <TableCell>{format(new Date(investment.start_date), "MMM dd, yyyy")}</TableCell>
+                    <TableCell>
+                      {investment.start_date 
+                        ? format(new Date(investment.start_date), "MMM dd, yyyy") 
+                        : <span className="text-muted-foreground italic text-xs">Not started</span>
+                      }
+                    </TableCell>
                     <TableCell>
                       <Badge 
                         variant={
                           investment.status === "active" ? "default" : 
-                          investment.status === "pending" ? "secondary" : 
+                          (investment.status === "pending" || investment.status === "approved") ? "secondary" : 
+                          investment.status === "suspended" ? "destructive" :
                           "outline"
+                        }
+                        className={
+                          investment.status === "approved" ? "bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200" : 
+                          investment.status === "suspended" ? "bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200" : ""
                         }
                       >
                         {investment.status.toUpperCase()}
@@ -165,12 +247,54 @@ const AdminInvestments = () => {
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="default"
                         size="sm"
-                        onClick={() => completeInvestmentMutation.mutate(investment)}
-                        disabled={investment.status === "completed" || investment.status === "rejected"}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => activateInvestmentMutation.mutate(investment)}
+                        disabled={investment.status !== "pending" && investment.status !== "approved"}
+                        title="Activate Investment"
                       >
                         <CheckCircle className="w-4 h-4" />
+                      </Button>
+                      
+                      {investment.status === "active" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                          onClick={() => updateStatusMutation.mutate({ investment, status: "suspended" })}
+                          title="Pause Investment"
+                        >
+                          <Pause className="w-4 h-4" />
+                        </Button>
+                      ) : investment.status === "suspended" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-green-500 text-green-600 hover:bg-green-50"
+                          onClick={() => updateStatusMutation.mutate({ investment, status: "active" })}
+                          title="Resume Investment"
+                        >
+                          <Play className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                        >
+                          <Pause className="w-4 h-4" />
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateStatusMutation.mutate({ investment, status: "completed" })}
+                        disabled={investment.status !== "active" && investment.status !== "suspended"}
+                        title="Complete Investment"
+                      >
+                        <CheckCircle className="w-4 h-4 text-green-600" />
                       </Button>
                       <Button
                         variant="destructive"
