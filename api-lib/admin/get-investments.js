@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { processMaturedInvestments } from "../utils/investment-processor.js";
 
 export default async function handler(req, res) {
   // Only allow GET requests
@@ -17,6 +18,14 @@ export default async function handler(req, res) {
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
+
+    // Run maturity check before fetching
+    try {
+      await processMaturedInvestments(supabaseAdmin);
+    } catch (maturityError) {
+      console.error("Error during maturity check:", maturityError);
+      // We continue even if maturity check fails to at least return current data
+    }
 
     console.log("Fetching all investments via Admin API (bypassing RLS)...");
 

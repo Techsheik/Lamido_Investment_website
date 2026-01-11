@@ -60,7 +60,7 @@ const Withdraw = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("last_withdrawal_date")
+        .select("last_withdrawal_date, balance")
         .eq("id", user.id)
         .single();
       return data;
@@ -81,7 +81,7 @@ const Withdraw = () => {
   const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
   
   // Calculate Total Accrued Return (only for investments that have completed at least 7 days)
-  const totalAccruedReturn = investments?.reduce((sum, inv) => {
+  const investmentReturns = investments?.reduce((sum, inv) => {
     if (!inv.start_date) return sum;
     
     const startDate = new Date(inv.start_date);
@@ -96,6 +96,8 @@ const Withdraw = () => {
     
     return sum;
   }, 0) || 0;
+
+  const totalAccruedReturn = investmentReturns + Number(profile?.balance || 0);
 
   // Check if user can withdraw (must be at least 7 days since last withdrawal or first time)
   const canWithdraw = () => {
@@ -231,7 +233,7 @@ const Withdraw = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-success">${totalAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Accrued returns (7+ days)</p>
+              <p className="text-xs text-muted-foreground mt-1">Accrued returns + Wallet balance</p>
               {!canWithdraw() && (
                 <p className="text-xs text-destructive mt-2">
                   Next withdrawal available in {daysUntilNextWithdrawal()} day{daysUntilNextWithdrawal() !== 1 ? 's' : ''}

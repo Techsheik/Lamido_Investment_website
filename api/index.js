@@ -19,6 +19,8 @@ import getUserDetailHandler from "../api-lib/admin/get-user-detail.js";
 import manageAdminsHandler from "../api-lib/admin/manage-admins.js";
 import updateInvestmentHandler from "../api-lib/admin/update-investment.js";
 import updatePlanHandler from "../api-lib/admin/update-plan.js";
+import checkMaturitiesHandler from "../api-lib/check-maturities.js";
+import completeInvestmentHandler from "../api-lib/user/complete-investment.js";
 
 const routes = {
   "GET": {
@@ -29,6 +31,7 @@ const routes = {
     "/api/admin/get-plans": getPlansHandler,
     "/api/admin/get-user-detail": getUserDetailHandler,
     "/api/admin/manage-admins": manageAdminsHandler,
+    "/api/check-maturities": checkMaturitiesHandler,
   },
   "POST": {
     "/api/admin/create-investor": createInvestorHandler,
@@ -45,6 +48,7 @@ const routes = {
     "/api/admin/delete-plan": deletePlanHandler,
     "/api/admin/update-investment": updateInvestmentHandler,
     "/api/admin/update-plan": updatePlanHandler,
+    "/api/user/complete-investment": completeInvestmentHandler,
   }
 };
 

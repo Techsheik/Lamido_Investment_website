@@ -20,6 +20,7 @@ import deleteUserHandler from "./api-lib/admin/delete-user.js";
 import getStatsHandler from "./api-lib/admin/get-stats.js";
 import updateUserHandler from "./api-lib/admin/update-user.js";
 import bulkActivateInvestmentsHandler from "./api-lib/admin/bulk-activate-investments.js";
+import completeInvestmentHandler from "./api-lib/user/complete-investment.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,8 +28,7 @@ const envPath = path.join(__dirname, ".env");
 if (fs.existsSync(envPath)) {
   console.log(`📝 Reading .env from: ${envPath}`);
   const envContent = fs.readFileSync(envPath, "utf-8");
-  const lines = envContent.split("\n");
-  
+  const lines = envContent.split(/\r?\n/);
   lines.forEach((line) => {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith("#")) {
@@ -77,6 +77,7 @@ try {
   app.get("/api/admin/get-stats", getStatsHandler);
   app.post("/api/admin/update-user", updateUserHandler);
   app.post("/api/admin/bulk-activate-investments", bulkActivateInvestmentsHandler);
+  app.post("/api/user/complete-investment", completeInvestmentHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -123,6 +124,7 @@ try {
           "/api/admin/delete-user": deleteUserHandler,
           "/api/admin/update-user": updateUserHandler,
           "/api/admin/bulk-activate-investments": bulkActivateInvestmentsHandler,
+          "/api/user/complete-investment": completeInvestmentHandler,
         }
       };
 
@@ -179,5 +181,6 @@ try {
 
   server.listen(PORT, HOST, () => {
     console.log(`🚀 Local API server running on http://${HOST}:${PORT} (fallback mode)`);
+    console.log(`   Vite dev server will proxy /api requests here`);
   });
 }

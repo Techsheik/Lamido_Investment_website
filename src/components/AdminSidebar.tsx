@@ -12,6 +12,7 @@ import {
   Shield,
   FileCheck,
   MessageSquare,
+  Bell,
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const items = [
   { title: "Transaction Proofs", url: "/admin/transaction-proofs", icon: FileCheck },
   { title: "Announcements", url: "/admin/announcements", icon: Megaphone },
   { title: "Complaints", url: "/admin/complaints", icon: MessageSquare },
+  { title: "Notifications", url: "/admin/notifications", icon: Bell },
   { title: "Admin Management", url: "/admin/management", icon: Shield },
   { title: "Investor Management", url: "/admin/investor-management", icon: Briefcase },
   { title: "Plan Builder", url: "/admin/plan-builder", icon: Package },

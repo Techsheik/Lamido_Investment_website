@@ -33,6 +33,7 @@ import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminManagement from "./pages/admin/AdminManagement";
 import AdminTransactionProofs from "./pages/admin/AdminTransactionProofs";
 import AdminComplaints from "./pages/admin/AdminComplaints";
+import AdminNotifications from "./pages/admin/AdminNotifications";
 import Announcements from "./pages/Announcements";
 import Complaints from "./pages/Complaints";
 import Referrals from "./pages/Referrals";
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/admin/management" element={<AdminManagement />} />
               <Route path="/admin/transaction-proofs" element={<AdminTransactionProofs />} />
               <Route path="/admin/complaints" element={<AdminComplaints />} />
+              <Route path="/admin/notifications" element={<AdminNotifications />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

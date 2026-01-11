@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const Investments = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [, setRerender] = useState(0);
 
   useEffect(() => {
@@ -47,7 +50,7 @@ const Investments = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("weekly_roi_percentage, roi_percentage, total_roi, accrued_return")
+        .select("weekly_roi_percentage, roi_percentage, total_roi, accrued_return, balance")
         .eq("id", user.id)
         .single();
       return data;
@@ -56,8 +59,47 @@ const Investments = () => {
     staleTime: 5000,
   });
 
+  const completeInvestmentMutation = useMutation({
+    mutationFn: async (investmentId: string) => {
+      const response = await fetch("/api/user/complete-investment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investmentId, userId: user?.id }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to complete investment");
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      toast({
+        title: "Investment Completed!",
+        description: `Successfully terminated investment. $${data.returnedAmount.toFixed(2)} has been added to your balance.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   useEffect(() => {
     if (user) {
+      // Trigger maturity check when user visits the page
+      fetch("/api/check-maturities")
+        .then(() => {
+          refetchProfile();
+          refetchInvestments();
+        })
+        .catch(err => console.error("Maturity check error:", err));
+
       const interval = setInterval(() => {
         refetchProfile();
         refetchInvestments();
@@ -103,7 +145,20 @@ const Investments = () => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Wallet Balance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                ${Number(userProfile?.balance || 0).toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -273,6 +328,21 @@ const Investments = () => {
                             }}
                           />
                         </div>
+                      </div>
+                    )}
+
+                    {(investment.status === "active" || investment.status === "suspended") && (
+                      <div className="pt-4 border-t flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-green-600 border-green-200 hover:bg-green-50"
+                          onClick={() => completeInvestmentMutation.mutate(investment.id)}
+                          disabled={completeInvestmentMutation.isPending}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          {completeInvestmentMutation.isPending ? "Processing..." : "Complete & Claim ROI"}
+                        </Button>
                       </div>
                     )}
                   </CardContent>
