@@ -21,6 +21,7 @@ import updateInvestmentHandler from "../api-lib/admin/update-investment.js";
 import updatePlanHandler from "../api-lib/admin/update-plan.js";
 import checkMaturitiesHandler from "../api-lib/check-maturities.js";
 import completeInvestmentHandler from "../api-lib/user/complete-investment.js";
+import getSignedUrlHandler from "../api-lib/admin/get-signed-url.js";
 
 const routes = {
   "GET": {
@@ -49,6 +50,7 @@ const routes = {
     "/api/admin/update-investment": updateInvestmentHandler,
     "/api/admin/update-plan": updatePlanHandler,
     "/api/user/complete-investment": completeInvestmentHandler,
+    "/api/admin/get-signed-url": getSignedUrlHandler,
   }
 };
 

@@ -51,7 +51,7 @@ const AdminTransactionProofs = () => {
 
   const approveProofMutation = useMutation({
     mutationFn: async (proofId: string) => {
-      const { error } = await supabase
+      const { error: proofUpdateError } = await supabase
         .from("transaction_proofs")
         .update({
           status: "approved",
@@ -59,27 +59,40 @@ const AdminTransactionProofs = () => {
         })
         .eq("id", proofId);
 
-      if (error) throw error;
+      if (proofUpdateError) {
+        console.error("Error updating proof status:", proofUpdateError);
+        throw proofUpdateError;
+      }
 
       // Also update the associated transaction status and activate investment
       const proof = proofs?.find((p: any) => p.id === proofId);
       if (proof?.transaction_id) {
-        await supabase
+        const { error: transUpdateError } = await supabase
           .from("transactions")
           .update({ status: "completed" })
           .eq("id", proof.transaction_id);
 
+        if (transUpdateError) {
+          console.error("Error updating transaction status:", transUpdateError);
+          throw transUpdateError;
+        }
+
         // Get transaction details to find user_id
-        const { data: transactionData } = await supabase
+        const { data: transactionData, error: transactionDataError } = await supabase
           .from("transactions")
           .select("user_id, amount")
           .eq("id", proof.transaction_id)
           .single();
 
+        if (transactionDataError) {
+          console.error("Error fetching transaction data:", transactionDataError);
+          throw transactionDataError;
+        }
+
         if (transactionData?.user_id) {
           // Activate the most recent pending investment for this user
           // First try to match by amount
-          let { data: pendingInvestments } = await supabase
+          let { data: pendingInvestments, error: pendingError } = await supabase
             .from("investments")
             .select("id")
             .eq("user_id", transactionData.user_id)
@@ -88,16 +101,27 @@ const AdminTransactionProofs = () => {
             .order("created_at", { ascending: false })
             .limit(1);
 
+          if (pendingError) {
+            console.error("Error querying pending investments:", pendingError);
+            pendingInvestments = [];
+          }
+
           // If no exact amount match, take the most recent pending one
           if (!pendingInvestments || pendingInvestments.length === 0) {
-            const { data: anyPending } = await supabase
+            const { data: anyPending, error: anyPendingError } = await supabase
               .from("investments")
               .select("id")
               .eq("user_id", transactionData.user_id)
               .eq("status", "pending")
               .order("created_at", { ascending: false })
               .limit(1);
-            pendingInvestments = anyPending;
+
+            if (anyPendingError) {
+              console.error("Error querying any pending investments:", anyPendingError);
+              pendingInvestments = [];
+            } else {
+              pendingInvestments = anyPending;
+            }
           }
 
           const invToActivate = pendingInvestments?.[0]?.id;
@@ -106,7 +130,7 @@ const AdminTransactionProofs = () => {
             const now = new Date();
             const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
 
-            await supabase
+            const { error: activateError } = await supabase
               .from("investments")
               .update({
                 status: "active",
@@ -114,6 +138,11 @@ const AdminTransactionProofs = () => {
                 end_date: endDate.toISOString(),
               })
               .eq("id", invToActivate);
+
+            if (activateError) {
+              console.error("Error activating investment:", activateError);
+              throw activateError;
+            }
           }
         }
       }
@@ -162,18 +191,29 @@ const AdminTransactionProofs = () => {
 
   const viewFile = async (filePath: string, proof: any) => {
     try {
-      const { data, error } = await supabase.storage
-        .from("transaction-proofs")
-        .createSignedUrl(filePath, 3600);
+      // Request a signed URL from the server (uses service role key)
+      const resp = await fetch('/api/admin/get-signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_path: filePath }),
+      });
 
-      if (error) throw error;
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        console.warn('Server signed-url error', errBody);
+        throw new Error(errBody.error || 'Failed to get signed URL from server');
+      }
+
+      const { signedUrl } = await resp.json();
+      if (!signedUrl) throw new Error('Server did not return a signed URL');
 
       setViewingProof(proof);
-      setPreviewUrl(data.signedUrl);
+      setPreviewUrl(signedUrl);
     } catch (error: any) {
+      console.error("Failed to load file preview:", error);
       toast({
         title: "Error",
-        description: "Failed to load file preview",
+        description: error?.message || "Failed to load file preview",
         variant: "destructive",
       });
     }
@@ -181,24 +221,35 @@ const AdminTransactionProofs = () => {
 
   const downloadFile = async (filePath: string, fileName: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from("transaction-proofs")
-        .download(filePath);
+      // Prefer signed URL download (avoids blob/CORS issues in some environments)
+      // Request signed URL from server
+      const resp = await fetch('/api/admin/get-signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_path: filePath }),
+      });
 
-      if (error) throw error;
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        console.error('Server signed-url error', errBody);
+        throw new Error(errBody.error || 'Failed to get signed URL from server');
+      }
 
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
+      const { signedUrl } = await resp.json();
+      if (!signedUrl) throw new Error('Server did not return a signed URL');
+
+      const a = document.createElement('a');
+      a.href = signedUrl;
+      a.download = fileName || 'file';
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     } catch (error: any) {
+      console.error("Failed to download file:", error);
       toast({
         title: "Error",
-        description: "Failed to download file",
+        description: error?.message || "Failed to download file",
         variant: "destructive",
       });
     }

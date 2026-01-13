@@ -21,6 +21,7 @@ import getStatsHandler from "./api-lib/admin/get-stats.js";
 import updateUserHandler from "./api-lib/admin/update-user.js";
 import bulkActivateInvestmentsHandler from "./api-lib/admin/bulk-activate-investments.js";
 import completeInvestmentHandler from "./api-lib/user/complete-investment.js";
+import getSignedUrlHandler from "./api-lib/admin/get-signed-url.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,8 +49,8 @@ if (fs.existsSync(envPath)) {
   console.warn(`⚠ .env file not found at ${envPath}`);
 }
 
-const PORT = 3000;
-const HOST = "127.0.0.1";
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const HOST = process.env.HOST || "127.0.0.1";
 
 // Try to use express if available; otherwise fall back to a minimal http server
 try {
@@ -78,6 +79,7 @@ try {
   app.post("/api/admin/update-user", updateUserHandler);
   app.post("/api/admin/bulk-activate-investments", bulkActivateInvestmentsHandler);
   app.post("/api/user/complete-investment", completeInvestmentHandler);
+  app.post("/api/admin/get-signed-url", getSignedUrlHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -125,6 +127,7 @@ try {
           "/api/admin/update-user": updateUserHandler,
           "/api/admin/bulk-activate-investments": bulkActivateInvestmentsHandler,
           "/api/user/complete-investment": completeInvestmentHandler,
+          "/api/admin/get-signed-url": getSignedUrlHandler,
         }
       };
 
