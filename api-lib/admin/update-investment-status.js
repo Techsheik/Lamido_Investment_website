@@ -26,7 +26,18 @@ export default async function handler(req, res) {
       const now = new Date();
       updateFields.start_date = now.toISOString();
       // Most plans are 7 days based on the migrations and UI
-      const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+      const duration = 7;
+      const endDate = new Date(now.getTime() + (duration * 24 * 60 * 60 * 1000));
+      updateFields.end_date = endDate.toISOString();
+    }
+
+    // Special handling for RENEWAL when status is set to "completed"
+    if (status === "completed") {
+      const now = new Date();
+      updateFields.status = "active"; // Keep it active for the next cycle
+      updateFields.start_date = now.toISOString();
+      const duration = 7; // Default duration
+      const endDate = new Date(now.getTime() + (duration * 24 * 60 * 60 * 1000));
       updateFields.end_date = endDate.toISOString();
     }
 
@@ -35,19 +46,24 @@ export default async function handler(req, res) {
       .from("investments")
       .update(updateFields)
       .eq("id", investmentId)
-      .select("*, profiles:user_id(balance)")
+      .select("*, profiles:user_id(balance, total_roi)")
       .single();
 
     if (invError) throw invError;
 
-    // 2. If status is completed, add ROI to user balance
+    // 2. If status was originally completed, add ROI to user balance
     if (status === "completed" && roiAmount) {
       const currentBalance = Number(investment.profiles?.balance || 0);
+      const currentTotalROI = Number(investment.profiles?.total_roi || 0);
       const newBalance = currentBalance + Number(roiAmount);
+      const newTotalROI = currentTotalROI + Number(roiAmount);
 
       const { error: balanceError } = await supabaseAdmin
         .from("profiles")
-        .update({ balance: newBalance })
+        .update({ 
+          balance: newBalance,
+          total_roi: newTotalROI
+        })
         .eq("id", investment.user_id);
 
       if (balanceError) throw balanceError;

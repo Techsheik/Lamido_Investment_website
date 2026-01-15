@@ -22,6 +22,7 @@ import updateUserHandler from "./api-lib/admin/update-user.js";
 import bulkActivateInvestmentsHandler from "./api-lib/admin/bulk-activate-investments.js";
 import completeInvestmentHandler from "./api-lib/user/complete-investment.js";
 import getSignedUrlHandler from "./api-lib/admin/get-signed-url.js";
+import checkMaturitiesHandler from "./api-lib/check-maturities.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,7 @@ try {
   app.post("/api/admin/bulk-activate-investments", bulkActivateInvestmentsHandler);
   app.post("/api/user/complete-investment", completeInvestmentHandler);
   app.post("/api/admin/get-signed-url", getSignedUrlHandler);
+  app.get("/api/check-maturities", checkMaturitiesHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -116,6 +118,7 @@ try {
           "/api/admin/get-transactions": getTransactionsHandler,
           "/api/admin/get-users": getUsersHandler,
           "/api/admin/get-stats": getStatsHandler,
+          "/api/check-maturities": checkMaturitiesHandler,
         },
         "POST": {
           "/api/admin/create-investor": createInvestorHandler,
