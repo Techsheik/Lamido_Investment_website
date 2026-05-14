@@ -1,73 +1,108 @@
-# Welcome to your Lovable project
+# 💰 Lamido Crypto Trading Community
 
-## Project info
+**A full-stack crypto investment and trading community platform built for local investors.**
 
-**URL**: https://lovable.dev/projects/2468fdff-2859-4b0a-9544-92cd71b7eee0
+> Built with React · TypeScript · Supabase · Tailwind CSS · Shadcn UI
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 🔗 Live Demo
 
-**Use Lovable**
+👉 [lamidoinvestmentwebsite.vercel.app](https://lamidoinvestmentwebsite.vercel.app)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/2468fdff-2859-4b0a-9544-92cd71b7eee0) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## 📌 What is this?
 
-**Use your preferred IDE**
+Lamido Crypto Trading Community is a web platform designed for local crypto investors to manage investments, track portfolios, and interact within a trading community. It features a full admin panel, server-side API, secure authentication, and a clean modern UI.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## ✨ Key Features
 
-Follow these steps:
+- **User Authentication** — Secure login and registration with Supabase Auth
+- **Investment Dashboard** — Track portfolio performance and transaction history
+- **Admin Panel** — Full control over users, investments, and platform activity
+- **Transaction Management** — Record, verify, and manage crypto transactions
+- **Payment Proof Upload** — Users upload receipts for admin verification
+- **Real-time Database** — Powered by Supabase with Row Level Security (RLS)
+- **Webhook Support** — Automated event handling via webhook integration
+- **Responsive UI** — Clean, mobile-friendly design with Tailwind CSS + Shadcn UI
+- **End-to-End Tests** — Playwright test suite for critical user flows
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+---
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 🛠️ Tech Stack
 
-# Step 3: Install the necessary dependencies.
-npm i
+| Layer | Technology |
+|---|---|
+| Frontend | React + Vite + TypeScript |
+| UI | Tailwind CSS + Shadcn UI |
+| Backend/DB | Supabase (PostgreSQL) |
+| Auth | Supabase Auth |
+| Server | Node.js Express API |
+| Testing | Playwright |
+| Deployment | Vercel |
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Supabase account
+
+### Installation
+
+```bash
+# Clone the repo
+git clone https://github.com/Techsheik/Lamido_Investment_website.git
+cd Lamido_Investment_website
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Add your Supabase URL and anon key
+
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Running Tests
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+npx playwright test
+```
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📁 Project Structure
 
-## What technologies are used for this project?
+```
+Lamido_Investment_website/
+├── src/
+│   ├── components/        # Reusable UI components
+│   ├── pages/             # Route-level pages
+│   └── hooks/             # Custom React hooks
+├── server/                # Express API server
+├── api/                   # API utility functions
+├── supabase/              # DB migrations & config
+├── tests/                 # Playwright test suite
+└── public/                # Static assets
+```
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 👤 Author
 
-## How can I deploy this project?
+**Abdullahi Musa Ibrahim**
+Backend Engineer · AI/ML Builder
+[GitHub](https://github.com/Techsheik)
 
-Simply open [Lovable](https://lovable.dev/projects/2468fdff-2859-4b0a-9544-92cd71b7eee0) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## 📄 License
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+This project is licensed under the MIT License.
