@@ -19,14 +19,21 @@ export default async function handler(req, res) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    console.log(`Updating investment ${investmentId} to status ${status}...`);
+    // Fetch existing investment to get duration
+    const { data: existingInv, error: fetchError } = await supabaseAdmin
+      .from("investments")
+      .select("*")
+      .eq("id", investmentId)
+      .single();
+
+    if (fetchError) throw fetchError;
 
     const updateFields = { status };
     if (status === "active") {
       const now = new Date();
       updateFields.start_date = now.toISOString();
-      // Most plans are 7 days based on the migrations and UI
-      const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+      const duration = Number(existingInv.duration) || 7;
+      const endDate = new Date(now.getTime() + (duration * 24 * 60 * 60 * 1000));
       updateFields.end_date = endDate.toISOString();
     }
 

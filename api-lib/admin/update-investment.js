@@ -30,6 +30,19 @@ export default async function handler(req, res) {
     delete cleanedData.created_at;
     delete cleanedData.updated_at;
 
+    if (cleanedData.duration || cleanedData.start_date) {
+      const { data: existing } = await supabaseAdmin
+        .from("investments")
+        .select("start_date, duration")
+        .eq("id", id)
+        .single();
+      
+      const startDateStr = cleanedData.start_date || existing?.start_date || new Date().toISOString();
+      const durationNum = Number(cleanedData.duration || existing?.duration || 7);
+      const startDate = new Date(startDateStr);
+      cleanedData.end_date = new Date(startDate.getTime() + (durationNum * 24 * 60 * 60 * 1000)).toISOString();
+    }
+
     const { data, error } = await supabaseAdmin
       .from("investments")
       .update(cleanedData)

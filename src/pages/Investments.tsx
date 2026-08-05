@@ -58,18 +58,41 @@ const Investments = () => {
 
   useEffect(() => {
     if (user) {
+      const channel = supabase
+        .channel(`user-investments-sync-${user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "investments", filter: `user_id=eq.${user.id}` },
+          () => {
+            refetchInvestments();
+            refetchProfile();
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
+          () => {
+            refetchProfile();
+          }
+        )
+        .subscribe();
+
       const interval = setInterval(() => {
         refetchProfile();
         refetchInvestments();
       }, 10000);
-      return () => clearInterval(interval);
+
+      return () => {
+        supabase.removeChannel(channel);
+        clearInterval(interval);
+      };
     }
   }, [user, refetchProfile, refetchInvestments]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setRerender(prev => prev + 1);
-    }, 60000);
+    }, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -175,7 +198,7 @@ const Investments = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {investments?.filter(inv => inv.status === "active").length || 0}
+                {investments?.filter(inv => inv.status === "active" || inv.status === "approved").length || 0}
               </div>
             </CardContent>
           </Card>
@@ -192,16 +215,37 @@ const Investments = () => {
         {activeInvestments && activeInvestments.length > 0 ? (
           <div className="grid gap-6">
             {activeInvestments.map((investment) => {
-              const startDate = new Date(investment.start_date || investment.created_at);
-              const duration = investment.duration || 7;
-              const endDate = investment.end_date ? new Date(investment.end_date) : new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
-              const now = new Date();
+              const isPending = investment.status === "pending";
+              const isSuspended = investment.status === "suspended";
+              const isCompleted = investment.status === "completed";
               
-              const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-              const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-              const daysElapsed = Math.floor((currentDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-              const progress = Math.min(100, Math.max(0, (daysElapsed / duration) * 100));
-              const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+              const startDate = new Date(investment.start_date || investment.created_at);
+              const duration = Number(investment.duration) || 7;
+              const endDate = investment.end_date 
+                ? new Date(investment.end_date) 
+                : new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
+
+              const now = new Date();
+              const totalMs = duration * 24 * 60 * 60 * 1000;
+              const elapsedMs = Math.max(0, now.getTime() - startDate.getTime());
+
+              const progressRatio = isPending 
+                ? 0 
+                : isCompleted || elapsedMs >= totalMs 
+                  ? 100 
+                  : Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+
+              const daysElapsed = isPending 
+                ? 0 
+                : isCompleted || elapsedMs >= totalMs 
+                  ? duration 
+                  : Math.min(duration, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)));
+
+              const daysRemaining = isPending 
+                ? duration 
+                : isCompleted || elapsedMs >= totalMs 
+                  ? 0 
+                  : Math.max(0, Math.ceil((totalMs - elapsedMs) / (1000 * 60 * 60 * 24)));
 
               return (
                 <Card key={investment.id}>
@@ -210,10 +254,10 @@ const Investments = () => {
                       <div>
                         <CardTitle>{investment.type}</CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Started {startDate.toLocaleDateString()}
+                          {isPending ? "Created" : "Started"} {startDate.toLocaleDateString()}
                         </p>
                       </div>
-                      <Badge variant={(investment.status === "active" || investment.status === "approved") ? "default" : investment.status === "suspended" ? "destructive" : "secondary"}>
+                      <Badge variant={(investment.status === "active" || investment.status === "approved") ? "default" : investment.status === "suspended" ? "destructive" : isCompleted ? "outline" : "secondary"}>
                         {investment.status}
                       </Badge>
                     </div>
@@ -240,41 +284,53 @@ const Investments = () => {
                       </div>
                     </div>
 
-                    {(investment.status === "pending") && (
+                    {isPending && (
                       <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                         <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
-                          ⏳ Pending admin approval - progress will start once approved
+                          ⏳ Pending admin approval - progress counter will activate once approved by admin
                         </p>
                       </div>
                     )}
 
-                    {(investment.status === "active" || investment.status === "approved" || investment.status === "suspended") && (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            {investment.status === "suspended" ? "Paused" : `Progress (Day ${Math.min(daysElapsed, duration)} of ${duration})`}
-                          </span>
-                          <span className="font-medium">
-                            {investment.status === "suspended" ? "Suspended by admin" : (daysRemaining > 0 ? `${daysRemaining} days remaining` : "Matured")}
-                          </span>
-                        </div>
-                        <div className="relative w-full h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${investment.status === "suspended" ? "opacity-50" : ""}`}
-                            style={{
-                              width: `${progress}%`,
-                              background: investment.status === "suspended" ? "#94a3b8" : (
-                                progress < 33 ? 
-                                'linear-gradient(90deg, #ef4444, #f97316)' :
-                                progress < 66 ?
-                                'linear-gradient(90deg, #f97316, #eab308)' :
-                                'linear-gradient(90deg, #eab308, #22c55e)'
-                              )
-                            }}
-                          />
-                        </div>
+                    <div className="space-y-2 pt-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {isPending 
+                            ? "Awaiting Activation" 
+                            : isSuspended 
+                              ? "Paused" 
+                              : isCompleted || progressRatio >= 100
+                                ? "Completed"
+                                : `Progress (Day ${daysElapsed} of ${duration})`
+                          }
+                        </span>
+                        <span className="font-medium">
+                          {isPending
+                            ? "0% Started"
+                            : isSuspended
+                              ? "Suspended by admin"
+                              : isCompleted || progressRatio >= 100
+                                ? "Matured (100%)"
+                                : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining (${progressRatio.toFixed(1)}%)`
+                          }
+                        </span>
                       </div>
-                    )}
+                      <div className="relative w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${isSuspended ? "opacity-50" : ""}`}
+                          style={{
+                            width: `${progressRatio}%`,
+                            background: isSuspended 
+                              ? "#94a3b8" 
+                              : progressRatio < 33 
+                                ? 'linear-gradient(90deg, #ef4444, #f97316)' 
+                                : progressRatio < 66 
+                                  ? 'linear-gradient(90deg, #f97316, #eab308)' 
+                                  : 'linear-gradient(90deg, #eab308, #22c55e)'
+                          }}
+                        />
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               );
