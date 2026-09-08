@@ -325,10 +325,11 @@ export async function sendAdminEmailNotification({
       console.log(`  Status: Simulated success (RESEND_API_KEY not set)`);
       deliveryStatus = "mock_sent";
     } else {
+      const toAddresses = adminEmail.split(",").map(e => e.trim()).filter(Boolean);
       const resendRes = await sendResendHttpRequest({
         apiKey: resendApiKey,
         from: emailFrom,
-        to: adminEmail,
+        to: toAddresses.length === 1 ? toAddresses[0] : toAddresses,
         subject,
         html: htmlBody
       });
