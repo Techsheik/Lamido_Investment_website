@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard } from "lucide-react";
+import { CreditCard, Phone } from "lucide-react";
 
 export function BankDetailsForm() {
   const { user } = useAuth();
@@ -16,6 +16,7 @@ export function BankDetailsForm() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
+    phone: "",
     account_holder_name: "",
     bank_name: "",
     bank_account_number: "",
@@ -28,7 +29,7 @@ export function BankDetailsForm() {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("account_holder_name, bank_name, bank_account_number, routing_number")
+        .select("phone, account_holder_name, bank_name, bank_account_number, account_number, routing_number")
         .eq("id", user.id)
         .single();
       return data;
@@ -39,9 +40,10 @@ export function BankDetailsForm() {
   useEffect(() => {
     if (bankDetails) {
       setFormData({
+        phone: bankDetails.phone || "",
         account_holder_name: bankDetails.account_holder_name || "",
         bank_name: bankDetails.bank_name || "",
-        bank_account_number: bankDetails.bank_account_number || "",
+        bank_account_number: bankDetails.bank_account_number || bankDetails.account_number || "",
         routing_number: bankDetails.routing_number || "",
       });
     }
@@ -50,17 +52,23 @@ export function BankDetailsForm() {
   const saveBankDetailsMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not authenticated");
-      if (!formData.account_holder_name.trim() || !formData.bank_name.trim() || !formData.bank_account_number.trim() || !formData.routing_number.trim()) {
-        throw new Error("All fields are required");
+      
+      if (!formData.phone.trim()) {
+        throw new Error("Working Phone Number is required for payment verification.");
+      }
+      if (!formData.bank_name.trim() || !formData.bank_account_number.trim() || !formData.account_holder_name.trim()) {
+        throw new Error("Bank Name, Account Number, and Account Holder Name are required.");
       }
 
       const { error } = await supabase
         .from("profiles")
         .update({
-          account_holder_name: formData.account_holder_name,
-          bank_name: formData.bank_name,
-          bank_account_number: formData.bank_account_number,
-          routing_number: formData.routing_number,
+          phone: formData.phone.trim(),
+          account_holder_name: formData.account_holder_name.trim(),
+          bank_name: formData.bank_name.trim(),
+          bank_account_number: formData.bank_account_number.trim(),
+          account_number: formData.bank_account_number.trim(),
+          routing_number: formData.routing_number ? formData.routing_number.trim() : null,
         })
         .eq("id", user.id);
 
@@ -68,9 +76,11 @@ export function BankDetailsForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bank-details"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       toast({
         title: "Success",
-        description: "Bank details saved successfully",
+        description: "Bank details and phone number saved successfully",
       });
       setIsEditing(false);
     },
@@ -83,9 +93,14 @@ export function BankDetailsForm() {
     },
   });
 
-  const hasBankDetails = bankDetails?.bank_account_number && bankDetails?.bank_name;
+  const hasCompleteDetails = Boolean(
+    bankDetails?.phone &&
+    bankDetails?.bank_name &&
+    (bankDetails?.bank_account_number || bankDetails?.account_number) &&
+    bankDetails?.account_holder_name
+  );
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <div>Loading bank details...</div>;
 
   return (
     <Card>
@@ -94,18 +109,24 @@ export function BankDetailsForm() {
           <div className="flex items-center gap-2">
             <CreditCard className="h-5 w-5 text-primary" />
             <div>
-              <CardTitle>Bank Account Details</CardTitle>
-              <CardDescription>Used for weekly ROI payouts</CardDescription>
+              <CardTitle>Bank Account & Contact Details</CardTitle>
+              <CardDescription>Required for withdrawal processing and payment verification</CardDescription>
             </div>
           </div>
-          {hasBankDetails && <Badge className="bg-success">Saved</Badge>}
+          {hasCompleteDetails && <Badge className="bg-success">Saved</Badge>}
         </div>
       </CardHeader>
       <CardContent>
-        {!isEditing && hasBankDetails ? (
+        {!isEditing && hasCompleteDetails ? (
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground">Account Holder</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <Phone className="h-3.5 w-3.5" /> Working Phone Number
+              </p>
+              <p className="font-semibold text-primary">{formData.phone || "Not set"}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Account Holder Name</p>
               <p className="font-semibold">{formData.account_holder_name}</p>
             </div>
             <div>
@@ -114,14 +135,16 @@ export function BankDetailsForm() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Account Number</p>
-              <p className="font-semibold">{formData.bank_account_number.slice(-4).padStart(formData.bank_account_number.length, '*')}</p>
+              <p className="font-semibold font-mono">{formData.bank_account_number}</p>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Routing Number</p>
-              <p className="font-semibold">{formData.routing_number}</p>
-            </div>
+            {formData.routing_number && (
+              <div>
+                <p className="text-sm text-muted-foreground">Routing / Sort Code</p>
+                <p className="font-semibold font-mono">{formData.routing_number}</p>
+              </div>
+            )}
             <Button onClick={() => setIsEditing(true)} variant="outline" className="w-full">
-              Edit Bank Details
+              Edit Details
             </Button>
           </div>
         ) : (
@@ -133,10 +156,28 @@ export function BankDetailsForm() {
             className="space-y-4"
           >
             <div className="space-y-2">
+              <Label htmlFor="phone-number" className="flex items-center gap-1">
+                <Phone className="h-4 w-4 text-primary" /> Working Phone Number *
+              </Label>
+              <Input
+                id="phone-number"
+                placeholder="e.g. +2348012345678"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Working phone number is required so admin can contact or verify your payments.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="account-holder">Account Holder Name *</Label>
               <Input
                 id="account-holder"
-                placeholder="John Doe"
+                placeholder="e.g. Ibrahim Abdullahi"
                 value={formData.account_holder_name}
                 onChange={(e) =>
                   setFormData({ ...formData, account_holder_name: e.target.value })
@@ -149,7 +190,7 @@ export function BankDetailsForm() {
               <Label htmlFor="bank-name">Bank Name *</Label>
               <Input
                 id="bank-name"
-                placeholder="First National Bank"
+                placeholder="e.g. Opay, Kuda, GTBank, Zenith"
                 value={formData.bank_name}
                 onChange={(e) =>
                   setFormData({ ...formData, bank_name: e.target.value })
@@ -162,7 +203,7 @@ export function BankDetailsForm() {
               <Label htmlFor="account-number">Account Number *</Label>
               <Input
                 id="account-number"
-                placeholder="1234567890"
+                placeholder="e.g. 7012345678"
                 value={formData.bank_account_number}
                 onChange={(e) =>
                   setFormData({ ...formData, bank_account_number: e.target.value })
@@ -172,43 +213,45 @@ export function BankDetailsForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="routing-number">Routing Number *</Label>
+              <Label htmlFor="routing-number">Routing Number / Sort Code (Optional)</Label>
               <Input
                 id="routing-number"
-                placeholder="021000021"
+                placeholder="Optional for international banks"
                 value={formData.routing_number}
                 onChange={(e) =>
                   setFormData({ ...formData, routing_number: e.target.value })
                 }
-                required
               />
             </div>
 
             <div className="flex gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setIsEditing(false);
-                  if (bankDetails) {
-                    setFormData({
-                      account_holder_name: bankDetails.account_holder_name || "",
-                      bank_name: bankDetails.bank_name || "",
-                      bank_account_number: bankDetails.bank_account_number || "",
-                      routing_number: bankDetails.routing_number || "",
-                    });
-                  }
-                }}
-              >
-                Cancel
-              </Button>
+              {hasCompleteDetails && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setIsEditing(false);
+                    if (bankDetails) {
+                      setFormData({
+                        phone: bankDetails.phone || "",
+                        account_holder_name: bankDetails.account_holder_name || "",
+                        bank_name: bankDetails.bank_name || "",
+                        bank_account_number: bankDetails.bank_account_number || bankDetails.account_number || "",
+                        routing_number: bankDetails.routing_number || "",
+                      });
+                    }
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
               <Button
                 type="submit"
                 className="flex-1"
                 disabled={saveBankDetailsMutation.isPending}
               >
-                {saveBankDetailsMutation.isPending ? "Saving..." : "Save Bank Details"}
+                {saveBankDetailsMutation.isPending ? "Saving..." : "Save Details"}
               </Button>
             </div>
           </form>
