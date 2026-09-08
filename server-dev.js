@@ -20,6 +20,26 @@ import deleteUserHandler from "./api-lib/admin/delete-user.js";
 import getStatsHandler from "./api-lib/admin/get-stats.js";
 import updateUserHandler from "./api-lib/admin/update-user.js";
 import bulkActivateInvestmentsHandler from "./api-lib/admin/bulk-activate-investments.js";
+import getCyclesHandler from "./api-lib/admin/get-cycles.js";
+import calculateCycleDistributionHandler from "./api-lib/admin/calculate-cycle-distribution.js";
+import finalizeCycleDistributionHandler from "./api-lib/admin/finalize-cycle-distribution.js";
+import announcementsHandler from "./api-lib/admin/announcements.js";
+import complaintsHandler from "./api-lib/admin/complaints.js";
+// New entry window & cycle control endpoints
+import openEntryHandler from "./api-lib/admin/open-entry.js";
+import closeEntryHandler from "./api-lib/admin/close-entry.js";
+import startCycleHandler from "./api-lib/admin/start-cycle.js";
+import resetInvestmentsHandler from "./api-lib/admin/reset-investments.js";
+import getUserDetailHandler from "./api-lib/admin/get-user-detail.js";
+import getPlansHandler from "./api-lib/admin/get-plans.js";
+import manageAdminsHandler from "./api-lib/admin/manage-admins.js";
+import createAdminHandler from "./api-lib/admin/create-admin.js";
+import createUserHandler from "./api-lib/admin/create-user.js";
+import deletePlanHandler from "./api-lib/admin/delete-plan.js";
+import updateInvestmentHandler from "./api-lib/admin/update-investment.js";
+import updatePlanHandler from "./api-lib/admin/update-plan.js";
+import requestWithdrawalHandler from "./api-lib/request-withdrawal.js";
+import submitComplaintHandler from "./api-lib/submit-complaint.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,10 +93,32 @@ try {
   app.get("/api/admin/get-transactions", getTransactionsHandler);
   app.post("/api/admin/update-transaction-status", updateTransactionStatusHandler);
   app.get("/api/admin/get-users", getUsersHandler);
+  app.get("/api/admin/get-user-detail", getUserDetailHandler);
+  app.get("/api/admin/get-plans", getPlansHandler);
+  app.all("/api/admin/manage-admins", manageAdminsHandler);
+  app.post("/api/admin/create-admin", createAdminHandler);
+  app.post("/api/admin/create-user", createUserHandler);
+  app.post("/api/admin/delete-plan", deletePlanHandler);
+  app.post("/api/admin/update-investment", updateInvestmentHandler);
+  app.post("/api/admin/update-plan", updatePlanHandler);
   app.post("/api/admin/delete-user", deleteUserHandler);
   app.get("/api/admin/get-stats", getStatsHandler);
   app.post("/api/admin/update-user", updateUserHandler);
   app.post("/api/admin/bulk-activate-investments", bulkActivateInvestmentsHandler);
+  app.get("/api/admin/get-cycles", getCyclesHandler);
+  app.post("/api/admin/calculate-cycle-distribution", calculateCycleDistributionHandler);
+  app.post("/api/admin/finalize-cycle-distribution", finalizeCycleDistributionHandler);
+  
+  // Announcements & Complaints routes
+  app.all("/api/admin/announcements", announcementsHandler);
+  app.all("/api/admin/complaints", complaintsHandler);
+  // Entry window & cycle control
+  app.post("/api/admin/open-entry", openEntryHandler);
+  app.post("/api/admin/close-entry", closeEntryHandler);
+  app.post("/api/admin/start-cycle", startCycleHandler);
+  // User actions with email notification
+  app.post("/api/request-withdrawal", requestWithdrawalHandler);
+  app.post("/api/submit-complaint", submitComplaintHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -112,7 +154,12 @@ try {
           "/api/admin/get-investments": getInvestmentsHandler,
           "/api/admin/get-transactions": getTransactionsHandler,
           "/api/admin/get-users": getUsersHandler,
+          "/api/admin/get-user-detail": getUserDetailHandler,
+          "/api/admin/get-plans": getPlansHandler,
           "/api/admin/get-stats": getStatsHandler,
+          "/api/admin/get-cycles": getCyclesHandler,
+          "/api/admin/announcements": announcementsHandler,
+          "/api/admin/complaints": complaintsHandler,
         },
         "POST": {
           "/api/admin/create-investor": createInvestorHandler,
@@ -123,6 +170,23 @@ try {
           "/api/admin/delete-user": deleteUserHandler,
           "/api/admin/update-user": updateUserHandler,
           "/api/admin/bulk-activate-investments": bulkActivateInvestmentsHandler,
+          "/api/admin/calculate-cycle-distribution": calculateCycleDistributionHandler,
+          "/api/admin/finalize-cycle-distribution": finalizeCycleDistributionHandler,
+          "/api/admin/announcements": announcementsHandler,
+          "/api/admin/complaints": complaintsHandler,
+          "/api/admin/open-entry": openEntryHandler,
+          "/api/admin/close-entry": closeEntryHandler,
+          "/api/admin/start-cycle": startCycleHandler,
+          "/api/admin/reset-investments": resetInvestmentsHandler,
+          "/api/request-withdrawal": requestWithdrawalHandler,
+          "/api/submit-complaint": submitComplaintHandler,
+        },
+        "PUT": {
+          "/api/admin/announcements": announcementsHandler,
+          "/api/admin/complaints": complaintsHandler,
+        },
+        "DELETE": {
+          "/api/admin/announcements": announcementsHandler,
         }
       };
 

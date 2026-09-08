@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { History, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { format } from "date-fns";
 
 const Transactions = () => {
   const { user, loading } = useAuth();
@@ -114,7 +115,14 @@ const Transactions = () => {
                           {transaction.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{new Date(transaction.date).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">
+                        {(() => {
+                          const raw = transaction.date || transaction.created_at;
+                          if (!raw) return "N/A";
+                          const d = new Date(raw);
+                          return isNaN(d.getTime()) ? "N/A" : format(d, "MMM dd, yyyy HH:mm");
+                        })()}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

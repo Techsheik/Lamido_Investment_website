@@ -1,19 +1,24 @@
-import { useForm } from "react-hook-form";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BankDetailsDisplay } from "./BankDetailsDisplay";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface EditInvestmentDialogProps {
   investment: any;
@@ -28,22 +33,39 @@ export function EditInvestmentDialog({
 }: EditInvestmentDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { register, handleSubmit } = useForm({
-    values: investment ? {
-      roi: investment.roi,
-      duration: investment.duration,
-    } : undefined,
+  const UNIT_PRICE = 70; // $70 per unit
+
+  const [formData, setFormData] = useState({
+    units: "1",
+    status: "active",
+    start_date: new Date().toISOString().split("T")[0],
   });
 
+  useEffect(() => {
+    if (investment) {
+      const initialUnits = investment.units || Math.max(1, Math.round(Number(investment.amount || 70) / UNIT_PRICE));
+      setFormData({
+        units: String(initialUnits),
+        status: investment.status || "active",
+        start_date: investment.start_date?.split("T")[0] || new Date().toISOString().split("T")[0],
+      });
+    }
+  }, [investment, open]);
+
   const updateInvestmentMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await fetch("/api/admin/update-investment", {
+    mutationFn: async () => {
+      const parsedUnits = Math.max(1, parseInt(formData.units) || 1);
+      const calculatedAmount = parsedUnits * UNIT_PRICE;
+
+      const response = await fetch("/api/admin/edit-investor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: investment.id,
-          roi: data.roi,
-          duration: data.duration,
+          investmentId: investment.id,
+          units: parsedUnits,
+          amount: calculatedAmount,
+          status: formData.status,
+          start_date: formData.start_date,
         }),
       });
 
@@ -51,81 +73,115 @@ export function EditInvestmentDialog({
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to update investment");
       }
+
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
       queryClient.invalidateQueries({ queryKey: ["admin-investors"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
       toast({
         title: "Success",
-        description: "Investment updated successfully",
+        description: "Investment details updated successfully",
       });
       onOpenChange(false);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to update investment: " + error.message,
+        description: error.message || "Failed to update investment",
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: any) => {
-    updateInvestmentMutation.mutate(data);
-  };
+  const parsedUnits = Math.max(1, parseInt(formData.units) || 1);
+  const totalAmount = parsedUnits * UNIT_PRICE;
+  const profile = investment?.profile || investment?.profiles;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Investment Details</DialogTitle>
-          <DialogDescription>View and edit investment information</DialogDescription>
+          <DialogTitle>Edit Investment Details</DialogTitle>
+          <DialogDescription>
+            Update share units, status, and start date for this investment
+          </DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="investment" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="investment">Investment</TabsTrigger>
-            <TabsTrigger value="banking">Banking Info</TabsTrigger>
-          </TabsList>
-          <TabsContent value="investment" className="space-y-4">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="roi">ROI Percentage (%)</Label>
-                <Input
-                  id="roi"
-                  type="number"
-                  step="0.01"
-                  {...register("roi", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="duration">Duration (days)</Label>
-                <Input
-                  id="duration"
-                  type="number"
-                  {...register("duration", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={updateInvestmentMutation.isPending}>
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </TabsContent>
-          <TabsContent value="banking">
-            <div className="py-4">
-              <BankDetailsDisplay
-                accountHolderName={investment?.profiles?.account_holder_name}
-                bankName={investment?.profiles?.bank_name}
-                bankAccountNumber={investment?.profiles?.bank_account_number}
-                routingNumber={investment?.profiles?.routing_number}
+
+        <div className="space-y-4 py-2">
+          {/* Investor Info Summary */}
+          {profile && (
+            <div className="p-3 bg-muted rounded-md border space-y-1 text-xs">
+              <div className="text-muted-foreground font-medium">Investor Account</div>
+              <div className="font-bold text-sm text-foreground">{profile.name || "Unknown User"}</div>
+              <div className="font-mono text-muted-foreground">{profile.email}</div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-units">Share Units ($70/unit)</Label>
+              <Input
+                id="edit-units"
+                type="number"
+                min="1"
+                step="1"
+                value={formData.units}
+                onChange={(e) => setFormData({ ...formData, units: e.target.value })}
               />
             </div>
-          </TabsContent>
-        </Tabs>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-total-amount">Total Capital ($)</Label>
+              <div className="h-10 px-3 py-2 border rounded-md bg-muted/50 font-bold text-base text-primary flex items-center">
+                ${totalAmount.toLocaleString()} USD
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(val) => setFormData({ ...formData, status: val })}
+              >
+                <SelectTrigger id="edit-status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-start-date">Start Date</Label>
+              <Input
+                id="edit-start-date"
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => updateInvestmentMutation.mutate()}
+            disabled={updateInvestmentMutation.isPending || parsedUnits < 1}
+          >
+            {updateInvestmentMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

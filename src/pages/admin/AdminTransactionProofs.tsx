@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Download, CheckCircle, XCircle, Eye, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -224,7 +224,7 @@ const AdminTransactionProofs = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
+                <TableHead>Investor (Name & Code)</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>File</TableHead>
                 <TableHead>Status</TableHead>
@@ -242,7 +242,12 @@ const AdminTransactionProofs = () => {
               ) : (
                 proofs?.map((proof: any) => (
                   <TableRow key={proof.id}>
-                    <TableCell className="font-medium">{proof.profile?.name || "Unknown"}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-foreground text-sm">{proof.profile?.name || "Unknown User"}</span>
+                        <span className="font-mono text-xs text-blue-500 dark:text-blue-400 font-bold">{proof.profile?.user_code || "N/A"}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm">{proof.profile?.email}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -277,8 +282,13 @@ const AdminTransactionProofs = () => {
                         {proof.status.charAt(0).toUpperCase() + proof.status.slice(1)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDistanceToNow(new Date(proof.upload_date), { addSuffix: true })}
+                    <TableCell className="text-xs text-muted-foreground font-mono">
+                      {(() => {
+                        const raw = proof.upload_date || proof.created_at;
+                        if (!raw) return "N/A";
+                        const d = new Date(raw);
+                        return isNaN(d.getTime()) ? "N/A" : format(d, "MMM dd, yyyy HH:mm");
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">
                       {proof.status === "pending" && (

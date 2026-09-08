@@ -19,6 +19,16 @@ import getUserDetailHandler from "../api-lib/admin/get-user-detail.js";
 import manageAdminsHandler from "../api-lib/admin/manage-admins.js";
 import updateInvestmentHandler from "../api-lib/admin/update-investment.js";
 import updatePlanHandler from "../api-lib/admin/update-plan.js";
+import getCyclesHandler from "../api-lib/admin/get-cycles.js";
+import calculateCycleDistributionHandler from "../api-lib/admin/calculate-cycle-distribution.js";
+import finalizeCycleDistributionHandler from "../api-lib/admin/finalize-cycle-distribution.js";
+import complaintsHandler from "../api-lib/admin/complaints.js";
+import requestWithdrawalHandler from "../api-lib/request-withdrawal.js";
+import submitComplaintHandler from "../api-lib/submit-complaint.js";
+import openEntryHandler from "../api-lib/admin/open-entry.js";
+import closeEntryHandler from "../api-lib/admin/close-entry.js";
+import startCycleHandler from "../api-lib/admin/start-cycle.js";
+import resetInvestmentsHandler from "../api-lib/admin/reset-investments.js";
 
 const routes = {
   "GET": {
@@ -29,6 +39,9 @@ const routes = {
     "/api/admin/get-plans": getPlansHandler,
     "/api/admin/get-user-detail": getUserDetailHandler,
     "/api/admin/manage-admins": manageAdminsHandler,
+    "/api/admin/get-cycles": getCyclesHandler,
+    "/api/admin/announcements": announcementsHandler,
+    "/api/admin/complaints": complaintsHandler,
   },
   "POST": {
     "/api/admin/create-investor": createInvestorHandler,
@@ -40,11 +53,27 @@ const routes = {
     "/api/admin/update-user": updateUserHandler,
     "/api/admin/bulk-activate-investments": bulkActivateInvestmentsHandler,
     "/api/admin/announcements": announcementsHandler,
+    "/api/admin/complaints": complaintsHandler,
     "/api/admin/create-admin": createAdminHandler,
     "/api/admin/create-user": createUserHandler,
     "/api/admin/delete-plan": deletePlanHandler,
     "/api/admin/update-investment": updateInvestmentHandler,
     "/api/admin/update-plan": updatePlanHandler,
+    "/api/admin/calculate-cycle-distribution": calculateCycleDistributionHandler,
+    "/api/admin/finalize-cycle-distribution": finalizeCycleDistributionHandler,
+    "/api/admin/open-entry": openEntryHandler,
+    "/api/admin/close-entry": closeEntryHandler,
+    "/api/admin/start-cycle": startCycleHandler,
+    "/api/admin/reset-investments": resetInvestmentsHandler,
+    "/api/request-withdrawal": requestWithdrawalHandler,
+    "/api/submit-complaint": submitComplaintHandler,
+  },
+  "PUT": {
+    "/api/admin/announcements": announcementsHandler,
+    "/api/admin/complaints": complaintsHandler,
+  },
+  "DELETE": {
+    "/api/admin/announcements": announcementsHandler,
   }
 };
 

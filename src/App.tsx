@@ -27,7 +27,6 @@ import AdminInvestments from "./pages/admin/AdminInvestments";
 import AdminTransactions from "./pages/admin/AdminTransactions";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminProfile from "./pages/admin/AdminProfile";
-import AdminPlanBuilder from "./pages/admin/AdminPlanBuilder";
 import AdminInvestorManagement from "./pages/admin/AdminInvestorManagement";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminManagement from "./pages/admin/AdminManagement";
@@ -76,7 +75,6 @@ const App = () => (
               <Route path="/admin/transactions" element={<AdminTransactions />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               <Route path="/admin/profile" element={<AdminProfile />} />
-              <Route path="/admin/plan-builder" element={<AdminPlanBuilder />} />
               <Route path="/admin/investor-management" element={<AdminInvestorManagement />} />
               <Route path="/admin/announcements" element={<AdminAnnouncements />} />
               <Route path="/admin/management" element={<AdminManagement />} />

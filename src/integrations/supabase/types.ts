@@ -247,6 +247,195 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_notifications: {
+        Row: {
+          id: string
+          event_type: string
+          idempotency_key: string
+          recipient_email: string
+          subject: string
+          user_id: string | null
+          reference_id: string | null
+          metadata: Json | null
+          status: string
+          error_message: string | null
+          sent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          event_type: string
+          idempotency_key: string
+          recipient_email: string
+          subject: string
+          user_id?: string | null
+          reference_id?: string | null
+          metadata?: Json | null
+          status?: string
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          event_type?: string
+          idempotency_key?: string
+          recipient_email?: string
+          subject?: string
+          user_id?: string | null
+          reference_id?: string | null
+          metadata?: Json | null
+          status?: string
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      cycle_distributions: {
+        Row: {
+          id: string
+          cycle_id: string | null
+          cycle_number: number | null
+          user_id: string | null
+          investment_id: string | null
+          user_name: string | null
+          user_code: string | null
+          eligible_units: number
+          investment_amount: number
+          ppsu: number
+          profit: number
+          total_return: number
+          distributed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cycle_id?: string | null
+          cycle_number?: number | null
+          user_id?: string | null
+          investment_id?: string | null
+          user_name?: string | null
+          user_code?: string | null
+          eligible_units?: number
+          investment_amount?: number
+          ppsu?: number
+          profit?: number
+          total_return?: number
+          distributed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cycle_id?: string | null
+          cycle_number?: number | null
+          user_id?: string | null
+          investment_id?: string | null
+          user_name?: string | null
+          user_code?: string | null
+          eligible_units?: number
+          investment_amount?: number
+          ppsu?: number
+          profit?: number
+          total_return?: number
+          distributed_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      investment_cycles: {
+        Row: {
+          id: string
+          cycle_number: number
+          name: string
+          status: string
+          cycle_start_at: string | null
+          cycle_end_at: string | null
+          started_by: string | null
+          entry_id: string | null
+          eligible_units: number
+          eligible_amount: number
+          community_profit: number
+          ppsu: number
+          finalized_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          cycle_number: number
+          name?: string
+          status?: string
+          cycle_start_at?: string | null
+          cycle_end_at?: string | null
+          started_by?: string | null
+          entry_id?: string | null
+          eligible_units?: number
+          eligible_amount?: number
+          community_profit?: number
+          ppsu?: number
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          cycle_number?: number
+          name?: string
+          status?: string
+          cycle_start_at?: string | null
+          cycle_end_at?: string | null
+          started_by?: string | null
+          entry_id?: string | null
+          eligible_units?: number
+          eligible_amount?: number
+          community_profit?: number
+          ppsu?: number
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      entry_windows: {
+        Row: {
+          id: string
+          cycle_number: number
+          status: string
+          opened_at: string
+          closed_at: string | null
+          opened_by: string | null
+          closed_by: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          cycle_number: number
+          status?: string
+          opened_at?: string
+          closed_at?: string | null
+          opened_by?: string | null
+          closed_by?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          cycle_number?: number
+          status?: string
+          opened_at?: string
+          closed_at?: string | null
+          opened_by?: string | null
+          closed_by?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number

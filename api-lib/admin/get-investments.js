@@ -37,7 +37,8 @@ export default async function handler(req, res) {
           bank_account_number,
           routing_number
         ),
-        investment_plans(name, roi_percentage)
+        investment_plans(name, roi_percentage),
+        entry_windows:entry_id(id, cycle_number, status)
       `)
       .order("created_at", { ascending: false });
 

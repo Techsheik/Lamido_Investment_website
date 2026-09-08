@@ -35,7 +35,6 @@ const items = [
   { title: "Complaints", url: "/admin/complaints", icon: MessageSquare },
   { title: "Admin Management", url: "/admin/management", icon: Shield },
   { title: "Investor Management", url: "/admin/investor-management", icon: Briefcase },
-  { title: "Plan Builder", url: "/admin/plan-builder", icon: Package },
   { title: "Settings", url: "/admin/settings", icon: Settings },
   { title: "Profile", url: "/admin/profile", icon: User },
 ];

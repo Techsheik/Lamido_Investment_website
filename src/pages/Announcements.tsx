@@ -6,8 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Pin, AlertTriangle, BellRing, Wrench, Info, Megaphone } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { parseAnnouncement, isAnnouncementExpired, Announcement } from "@/lib/announcement-utils";
 
 const Announcements = () => {
   const { user, loading } = useAuth();
@@ -22,13 +24,29 @@ const Announcements = () => {
   const { data: announcements, isLoading } = useQuery({
     queryKey: ["announcements"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("announcements")
         .select("*")
         .eq("is_active", true)
         .order("created_at", { ascending: false });
-      return data || [];
+
+      if (error) {
+        console.error("Announcements query error:", error);
+        return [];
+      }
+
+      const parsedList = (data || [])
+        .map((item) => parseAnnouncement(item))
+        .filter((item) => !isAnnouncementExpired(item));
+
+      // Sort pinned to top first, then by date
+      return parsedList.sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1;
+        if (!a.is_pinned && b.is_pinned) return 1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
     },
+    refetchInterval: 10000,
   });
 
   if (loading || !user) {
@@ -41,6 +59,35 @@ const Announcements = () => {
     );
   }
 
+  const getPriorityBadge = (priority?: string) => {
+    switch (priority) {
+      case "urgent":
+        return (
+          <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 gap-1 font-semibold">
+            <AlertTriangle className="w-3 h-3" /> URGENT ALERT
+          </Badge>
+        );
+      case "important":
+        return (
+          <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 gap-1 font-semibold">
+            <BellRing className="w-3 h-3" /> IMPORTANT
+          </Badge>
+        );
+      case "maintenance":
+        return (
+          <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-semibold">
+            <Wrench className="w-3 h-3" /> MAINTENANCE
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="outline" className="text-blue-500 border-blue-500/30 gap-1 font-semibold">
+            <Info className="w-3 h-3" /> NOTICE
+          </Badge>
+        );
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -52,7 +99,10 @@ const Announcements = () => {
         </div>
 
         <div>
-          <h1 className="text-4xl font-bold">Announcements</h1>
+          <h1 className="text-4xl font-bold flex items-center gap-2">
+            <Megaphone className="w-8 h-8 text-amber-500" />
+            Community Broadcasts
+          </h1>
           <p className="text-muted-foreground mt-2">
             {announcements?.length === 0
               ? "No announcements at this time"
@@ -67,31 +117,51 @@ const Announcements = () => {
         ) : announcements?.length === 0 ? (
           <Card>
             <CardContent className="pt-12 pb-12">
-              <p className="text-center text-muted-foreground">No announcements available</p>
+              <p className="text-center text-muted-foreground">No active announcements available.</p>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {announcements?.map((announcement: any) => (
-              <Card key={announcement.id} className="hover:shadow-lg transition-shadow overflow-hidden">
-                {announcement.image_url && (
+          <div className="space-y-6">
+            {announcements?.map((item: Announcement) => (
+              <Card
+                key={item.id}
+                className={`overflow-hidden transition-all border ${
+                  item.is_pinned
+                    ? "border-amber-500/40 bg-gradient-to-r from-amber-500/5 via-background to-amber-500/10 shadow-md"
+                    : item.priority === "urgent"
+                    ? "border-red-500/30 bg-red-500/5 shadow-sm"
+                    : "bg-card hover:shadow-lg"
+                }`}
+              >
+                {item.image_url && (
                   <div className="w-full h-64 overflow-hidden bg-muted">
-                    <img 
-                      src={announcement.image_url} 
-                      alt={announcement.title} 
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
                       className="w-full h-full object-cover"
                     />
                   </div>
                 )}
+
                 <CardHeader>
-                  <CardTitle className="text-2xl">{announcement.title}</CardTitle>
-                  <CardDescription>
-                    {formatDistanceToNow(new Date(announcement.created_at), { addSuffix: true })}
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    {item.is_pinned && (
+                      <Badge className="bg-amber-500 text-white font-bold text-xs gap-1">
+                        <Pin className="w-3 h-3 fill-current" /> FEATURED
+                      </Badge>
+                    )}
+                    {getPriorityBadge(item.priority)}
+                  </div>
+
+                  <CardTitle className="text-2xl font-bold">{item.title}</CardTitle>
+                  <CardDescription className="text-xs">
+                    Published {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                   </CardDescription>
                 </CardHeader>
+
                 <CardContent>
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground">
-                    {announcement.content}
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
+                    {item.content}
                   </p>
                 </CardContent>
               </Card>

@@ -59,16 +59,20 @@ export default function Services() {
           </div>
 
           {isLoading ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
                 <Card key={i} className="p-6 animate-pulse">
                   <div className="h-32 bg-muted rounded" />
                 </Card>
               ))}
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {plans?.filter((plan) => !plan.name.toLowerCase().includes('stacking')).map((plan, index) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {plans?.filter((plan) => 
+                !plan.name.toLowerCase().includes('stacking') && 
+                !plan.name.toLowerCase().includes('withdrawal') &&
+                !plan.description?.toLowerCase().includes('withdraw')
+              ).map((plan, index) => (
                 <Card
                   key={plan.id}
                   className="p-6 relative overflow-hidden hover:shadow-xl transition-all animate-fade-in group"
@@ -106,8 +110,8 @@ export default function Services() {
                       
                       <div className="flex items-center gap-2 text-sm">
                         <Shield className="h-4 w-4 text-primary" />
-                        <span className="text-muted-foreground">Weekly ROI:</span>
-                        <span className="font-semibold text-success">{plan.roi_percentage}%</span>
+                        <span className="text-muted-foreground">Payout Model:</span>
+                        <span className="font-semibold text-primary">Community Profit Share</span>
                       </div>
                       
                       <div className="flex items-center gap-2 text-sm">
@@ -117,11 +121,11 @@ export default function Services() {
                       </div>
                     </div>
 
-                    <div className="text-center pt-4">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-                        {plan.roi_percentage}%
+                    <div className="text-center pt-2">
+                      <div className="text-lg font-bold text-primary">
+                        Community Profit Share
                       </div>
-                      <div className="text-sm text-muted-foreground">Returns</div>
+                      <div className="text-xs text-muted-foreground">Distributed per share unit (PPSU)</div>
                     </div>
 
                     <Button

@@ -48,13 +48,29 @@ const Complaints = () => {
       if (!formData.title.trim() || !formData.description.trim()) {
         throw new Error("Title and description required");
       }
-      const { error } = await supabase.from("complaints").insert({
-        user_id: user.id,
-        title: formData.title,
-        description: formData.description,
-        category: formData.category,
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Session expired. Please log in again.");
+
+      const res = await fetch("/api/submit-complaint", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+        }),
       });
-      if (error) throw error;
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || "Failed to submit complaint.");
+      }
+      return resData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["complaints", user?.id] });
@@ -175,8 +191,8 @@ const Complaints = () => {
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => createComplaintMutation.mutate()}>
-                Submit
+              <Button onClick={() => createComplaintMutation.mutate()} disabled={createComplaintMutation.isPending}>
+                {createComplaintMutation.isPending ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </div>

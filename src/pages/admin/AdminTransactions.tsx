@@ -194,8 +194,7 @@ const AdminTransactions = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>User Code</TableHead>
+                <TableHead>Investor (Name & Code)</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Reference</TableHead>
@@ -208,8 +207,12 @@ const AdminTransactions = () => {
               {transactions && transactions.length > 0 ? (
                 transactions.map((transaction: any) => (
                   <TableRow key={transaction.id}>
-                    <TableCell>{transaction.profile?.name || "N/A"}</TableCell>
-                    <TableCell className="font-mono">{transaction.profile?.user_code || "N/A"}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-foreground text-sm">{transaction.profile?.name || "Unknown User"}</span>
+                        <span className="font-mono text-xs text-blue-500 dark:text-blue-400 font-bold">{transaction.profile?.user_code || "N/A"}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="capitalize">
                       <Badge variant={transaction.type === "deposit" ? "default" : "secondary"}>
                         {transaction.type}

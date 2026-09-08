@@ -37,29 +37,22 @@ const AdminInvestorManagement = () => {
 
       console.log("Investments data received:", data?.length, "records");
 
-      const mappedData = (data || [])
-        .map((inv: any) => {
-        // Handle case where profiles might be an array or a single object
-        const profile = Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles;
-        const roiPercentage = Number(inv.roi || profile?.weekly_roi_percentage || 10);
-        const roiAmount = (Number(inv.amount) * roiPercentage) / 100;
-        
-        return {
-          ...inv,
-          profile: profile || null,
-          calculatedROI: roiAmount,
-          roiPercentage: roiPercentage
-        };
-      });
-      
-      if (mappedData.length > 0) {
-        console.log("Mapped investors data sample:", mappedData[0]);
-      } else {
-        console.log("No mapped data after filtering. currentUser:", currentUser?.id);
-      }
-      return mappedData;
-    },
-  });
+        const mappedData = (data || []).map((inv: any) => {
+          const profile = Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles;
+          const units = Number(inv.units || Math.max(1, Math.round(Number(inv.amount || 70) / 70)));
+          const amount = units * 70;
+
+          return {
+            ...inv,
+            profile: profile || null,
+            units,
+            amount,
+          };
+        });
+
+        return mappedData;
+      },
+    });
 
   // Delete investor mutation
   const deleteInvestorMutation = useMutation({
@@ -106,15 +99,12 @@ const AdminInvestorManagement = () => {
     );
   }
 
-  const totalInvestorAmount = investors?.reduce(
-    (sum: number, inv: any) => sum + Number(inv.amount),
+  const totalUnits = investors?.reduce(
+    (sum: number, inv: any) => sum + Number(inv.units || 1),
     0
   ) || 0;
 
-  const totalROI = investors?.reduce(
-    (sum: number, inv: any) => sum + Number(inv.calculatedROI || 0),
-    0
-  ) || 0;
+  const totalInvestorAmount = totalUnits * 70;
 
   return (
     <AdminLayout>
@@ -123,12 +113,12 @@ const AdminInvestorManagement = () => {
           <div>
             <h1 className="text-3xl font-bold">Investor Management</h1>
             <p className="text-muted-foreground mt-2">
-              Manage and track investor data (Total: {investors?.length || 0})
+              Create and manage user investments (Total Active Share Units: {totalUnits})
             </p>
           </div>
           <Button onClick={() => setCreatingInvestor(true)} size="lg">
             <Plus className="h-4 w-4 mr-2" />
-            Add Investor
+            Add Investment
           </Button>
         </div>
 
@@ -138,11 +128,10 @@ const AdminInvestorManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Investor Name</TableHead>
-                  <TableHead>User ID (Debug)</TableHead>
+                  <TableHead>User ID</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Share Units</TableHead>
                   <TableHead>Investment Amount</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>ROI</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -156,12 +145,12 @@ const AdminInvestorManagement = () => {
                     </TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">
                       {investor.user_id.substring(0, 8)}...
-                      {currentUser?.id === investor.user_id && (
-                        <span className="ml-1 text-red-500 font-bold">(YOU)</span>
-                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {investor.profile?.email || "N/A"}
+                    </TableCell>
+                    <TableCell className="font-bold text-primary">
+                      {investor.units || 1} unit{(investor.units || 1) !== 1 ? 's' : ''}
                     </TableCell>
                     <TableCell className="font-semibold">
                       ${Number(investor.amount).toLocaleString("en-US", {
@@ -169,18 +158,12 @@ const AdminInvestorManagement = () => {
                       })}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {investor.investment_plans?.name || "Custom"}
-                    </TableCell>
-                    <TableCell className="font-bold text-success">
-                      ${Number(investor.calculatedROI).toFixed(2)}
-                      <span className="text-xs text-muted-foreground ml-1">
-                        ({investor.roiPercentage}%)
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {investor.start_date
-                        ? format(new Date(investor.start_date), "MMM dd, yyyy")
-                        : "N/A"}
+                      {(() => {
+                        if (!investor.start_date) return "N/A";
+                        const d = new Date(investor.start_date);
+                        if (isNaN(d.getTime())) return "N/A";
+                        try { return format(d, "MMM dd, yyyy"); } catch (e) { return "N/A"; }
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -215,10 +198,10 @@ const AdminInvestorManagement = () => {
         ) : (
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-muted-foreground mb-4">No investors added yet</p>
+              <p className="text-muted-foreground mb-4">No investments setup yet</p>
               <Button onClick={() => setCreatingInvestor(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Your First Investor
+                Create Investment for Registered User
               </Button>
             </CardContent>
           </Card>
@@ -241,7 +224,18 @@ const AdminInvestorManagement = () => {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Total Investment
+                  Total Active Share Units
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary">{totalUnits} units</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Capital Invested
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -256,26 +250,11 @@ const AdminInvestorManagement = () => {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Total ROI Accrued
+                  Active Investments
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-success">
-                  ${totalROI.toLocaleString("en-US", {
-                    maximumFractionDigits: 0,
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Active Investors
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
+                <div className="text-2xl font-bold text-emerald-500">
                   {investors.filter((i: any) => i.status === "active").length}
                 </div>
               </CardContent>
@@ -288,25 +267,21 @@ const AdminInvestorManagement = () => {
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <Upload className="h-4 w-4" />
-              How to Upload Investor Data
+              How Admin Creates Investments for Users
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              • Click "Add Investor" to manually add a new investor record
+              • Click "Add Investment" to create an investment for an existing registered user.
             </p>
             <p>
-              • Fill in the investor's name, email, investment amount, and ROI
-              percentage
+              • Select the user from the registered user accounts list.
             </p>
             <p>
-              • Select an investment plan or create a custom ROI percentage
+              • Assign the number of Share Units ($70 per unit). The investment amount calculates automatically.
             </p>
             <p>
-              • Changes automatically reflect in the user's dashboard in real-time
-            </p>
-            <p>
-              • You can edit or delete investor records at any time
+              • All investments automatically synchronize with the user's dashboard and 7-day cycle calculations.
             </p>
           </CardContent>
         </Card>

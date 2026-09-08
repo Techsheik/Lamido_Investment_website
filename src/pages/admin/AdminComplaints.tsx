@@ -18,20 +18,13 @@ const AdminComplaints = () => {
 
   const { data: complaints, isLoading, error } = useQuery({
     queryKey: ["admin-complaints"],
+    refetchInterval: 10000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("complaints")
-        .select(`
-          *,
-          profiles:user_id(id, name, email, phone, country)
-        `)
-        .order("created_at", { ascending: false });
-      
-      if (error) {
-        console.error("Complaints query error:", error);
-        throw error;
+      const response = await fetch("/api/admin/complaints");
+      if (!response.ok) {
+        throw new Error("Failed to fetch complaints");
       }
-      
+      const data = await response.json();
       return (data || []).map((c: any) => ({
         ...c,
         profile: Array.isArray(c.profiles) ? c.profiles[0] : c.profiles,
@@ -41,15 +34,19 @@ const AdminComplaints = () => {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase
-        .from("complaints")
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
+      const response = await fetch("/api/admin/complaints", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update complaint status");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-complaints"] });
-      toast({ title: "Success", description: "Status updated" });
+      toast({ title: "Success", description: "Complaint status updated" });
     },
     onError: (error: any) => {
       toast({

@@ -60,7 +60,7 @@ const Withdraw = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("last_withdrawal_date")
+        .select("*")
         .eq("id", user.id)
         .single();
       return data;
@@ -80,22 +80,21 @@ const Withdraw = () => {
 
   const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
   
-  // Calculate Total Accrued Return (only for investments that have completed at least 7 days)
-  const totalAccruedReturn = investments?.reduce((sum, inv) => {
+  // Calculate Total Accrued Return / Available Balance
+  const profileBalance = Number(profile?.balance || profile?.accrued_return || profile?.total_roi || 0);
+  const activeAccrued = investments?.reduce((sum, inv) => {
     if (!inv.start_date) return sum;
-    
     const startDate = new Date(inv.start_date);
     const now = new Date();
     const daysPassed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    // Only count returns if investment has completed at least 7 days
-    if (daysPassed >= 7) {
-      const totalReturn = Number(inv.amount) * Number(inv.roi) / 100;
+    if (daysPassed >= 7 || inv.status === "completed") {
+      const totalReturn = Number(inv.amount) * Number(inv.roi || 0) / 100;
       return sum + totalReturn;
     }
-    
     return sum;
   }, 0) || 0;
+
+  const totalAccruedReturn = Math.max(profileBalance, activeAccrued);
 
   // Check if user can withdraw (must be at least 7 days since last withdrawal or first time)
   const canWithdraw = () => {
@@ -118,8 +117,35 @@ const Withdraw = () => {
     return Math.max(0, 7 - daysSinceLastWithdrawal);
   };
 
+  const hasPhone = Boolean(profile?.phone && profile.phone.trim().length >= 5);
+  const hasBankDetails = Boolean(
+    profile?.bank_name &&
+    profile.bank_name.trim().length > 0 &&
+    (profile?.bank_account_number || profile?.account_number) &&
+    (profile.bank_account_number || profile.account_number).trim().length > 0
+  );
+  const hasCompleteProfile = hasPhone && hasBankDetails;
+
   const handleWithdrawalRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!hasPhone) {
+      toast({
+        title: "Working Phone Number Required 📞",
+        description: "Please update your working phone number in Profile Settings before requesting a withdrawal so admin can verify your payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!hasBankDetails) {
+      toast({
+        title: "Bank Details Required 🏦",
+        description: "Please update your Bank Name, Account Number, and Account Holder Name in Profile Settings before requesting a withdrawal.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     const withdrawalAmount = parseFloat(amount);
     
@@ -142,7 +168,7 @@ const Withdraw = () => {
       return;
     }
 
-    if (withdrawalAmount > totalAccruedReturn) {
+    if (totalAccruedReturn > 0 && withdrawalAmount > totalAccruedReturn) {
       toast({
         title: "Insufficient Funds",
         description: `You can only withdraw up to $${totalAccruedReturn.toFixed(2)}`,
@@ -163,24 +189,30 @@ const Withdraw = () => {
     setSubmitting(true);
 
     try {
-      // Create withdrawal transaction
-      const { error: transactionError } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        type: "withdrawal",
-        amount: withdrawalAmount,
-        status: "pending",
-        date: new Date().toISOString(),
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error("Authentication session expired. Please log in again.");
+      }
+
+      const res = await fetch("/api/request-withdrawal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount: withdrawalAmount,
+          paymentMethod,
+          paymentInfo: paymentMethod,
+        }),
       });
 
-      if (transactionError) throw transactionError;
-
-      // Update last withdrawal date
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ last_withdrawal_date: new Date().toISOString() })
-        .eq("id", user.id);
-
-      if (profileError) throw profileError;
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || "Failed to submit withdrawal request.");
+      }
 
       toast({
         title: "✅ Withdrawal Request Submitted",
@@ -190,11 +222,11 @@ const Withdraw = () => {
       setIsOpen(false);
       setAmount("");
       setPaymentMethod("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Withdrawal request error:", error);
       toast({
         title: "Error",
-        description: "Failed to submit withdrawal request. Please try again.",
+        description: error.message || "Failed to submit withdrawal request. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -248,7 +280,7 @@ const Withdraw = () => {
           <CardContent>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full md:w-auto" disabled={totalAccruedReturn <= 0 || !canWithdraw()}>
+                <Button className="w-full md:w-auto" disabled={!canWithdraw()}>
                   Request Withdrawal
                 </Button>
               </DialogTrigger>
@@ -259,6 +291,30 @@ const Withdraw = () => {
                     Enter the amount you want to withdraw and select your payment method.
                   </DialogDescription>
                 </DialogHeader>
+
+                {!hasCompleteProfile && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-xs text-amber-500 space-y-1.5">
+                    <div className="font-semibold flex items-center gap-1 text-amber-400">
+                      ⚠️ Profile Details Required for Withdrawal
+                    </div>
+                    <p className="text-[11px] leading-relaxed">
+                      Before requesting a withdrawal, you must update your <strong>Bank Details</strong> (Bank Name, Account Number, Account Holder Name) and a <strong>Working Phone Number</strong> in your Profile Settings so the admin can verify your request.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-1 h-7 text-xs border-amber-500/40 text-amber-400 hover:bg-amber-500/20"
+                      onClick={() => {
+                        setIsOpen(false);
+                        navigate("/profile");
+                      }}
+                    >
+                      Update Profile Settings &rarr;
+                    </Button>
+                  </div>
+                )}
+
                 <form onSubmit={handleWithdrawalRequest} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="amount">Withdrawal Amount (USD)</Label>
@@ -269,11 +325,11 @@ const Withdraw = () => {
                       placeholder="0.00"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
-                      max={totalAccruedReturn}
+                      max={totalAccruedReturn > 0 ? totalAccruedReturn : undefined}
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Maximum: ${totalAccruedReturn.toFixed(2)}
+                      Available Balance: ${totalAccruedReturn.toFixed(2)}
                     </p>
                   </div>
 
@@ -292,8 +348,16 @@ const Withdraw = () => {
                     </Select>
                   </div>
 
-                  <Button type="submit" className="w-full" disabled={submitting}>
-                    {submitting ? "Submitting..." : "Submit Request"}
+                  {hasBankDetails && (
+                    <div className="p-3 bg-muted/50 border rounded-md text-xs space-y-1 font-mono">
+                      <div className="text-muted-foreground font-sans font-medium text-[11px]">Registered Payout Bank Account</div>
+                      <div className="font-bold text-foreground">{profile?.bank_name} — {profile?.bank_account_number || profile?.account_number}</div>
+                      <div className="text-muted-foreground text-[11px]">Holder: {profile?.account_holder_name || profile?.name} | Tel: {profile?.phone}</div>
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={submitting || !hasCompleteProfile}>
+                    {submitting ? "Submitting Request..." : "Submit Withdrawal Request"}
                   </Button>
                 </form>
               </DialogContent>

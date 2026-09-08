@@ -31,109 +31,106 @@ export default async function handler(req, res) {
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
-    const { name, email, amount, roi_percentage, plan_id, start_date } = req.body;
+    const { userId: inputUserId, name, email, amount: inputAmount, units: inputUnits, plan_id, start_date, status: inputStatus } = req.body;
 
-    // Validate inputs
-    if (!name || !email || !amount || roi_percentage === undefined || !start_date) {
-      return res.status(400).json({
-        error: "Missing required fields: name, email, amount, roi_percentage, start_date",
-      });
+    let userId = inputUserId;
+    let targetEmail = email;
+    let targetName = name;
+
+    // Validate start date
+    const startDate = start_date || new Date().toISOString();
+    const status = inputStatus || "active";
+
+    // Determine units and amount ($70 per share unit)
+    const UNIT_PRICE = 70;
+    let units = Number(inputUnits);
+    if (!units || isNaN(units) || units < 1) {
+      units = Math.max(1, Math.round(Number(inputAmount || 70) / UNIT_PRICE));
     }
+    const investAmount = units * UNIT_PRICE;
 
-    // Step 1: Check if user exists or create new auth user
-    let userId;
-    let isNewUser = false;
+    // Step 1: Resolve user ID (existing profile or create new)
+    if (userId) {
+      const { data: existingProfile, error: getProfErr } = await supabaseAdmin
+        .from("profiles")
+        .select("id, name, email, user_code")
+        .eq("id", userId)
+        .single();
+      
+      if (getProfErr || !existingProfile) {
+        return res.status(404).json({ error: "Selected user profile not found" });
+      }
+      targetEmail = existingProfile.email;
+      targetName = existingProfile.name;
+    } else if (email) {
+      // Check if profile already exists with this email
+      const { data: existingProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("id, name, email")
+        .eq("email", email)
+        .maybeSingle();
 
-    // Check if profile already exists with this email
-    const { data: existingProfile, error: profileSearchError } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
+      if (existingProfile) {
+        userId = existingProfile.id;
+        targetName = targetName || existingProfile.name;
+      } else {
+        // Try to create auth user using admin API
+        const tempPassword = Math.random().toString(36).slice(-10) + "A1!";
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password: tempPassword,
+          user_metadata: { name: targetName || email.split("@")[0] },
+          email_confirm: true,
+        });
 
-    if (profileSearchError) {
-      console.error("Error searching for existing profile:", profileSearchError);
-    }
-
-    if (existingProfile) {
-      userId = existingProfile.id;
-      console.log(`Found existing user with ID: ${userId}`);
-    } else {
-      // Try to create auth user using admin API
-      const tempPassword = Math.random().toString(36).slice(-10) + "A1!";
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: tempPassword,
-        user_metadata: { name },
-        email_confirm: true, // Auto-confirm email
-      });
-
-      if (authError) {
-        // If user already exists in Auth but not in Profiles (edge case)
-        const errorMsg = authError.message.toLowerCase();
-        if (errorMsg.includes("already registered") || errorMsg.includes("already being registered") || errorMsg.includes("email exists")) {
-          // We need to find the user ID from Auth since they aren't in Profiles
-          const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        if (authError) {
+          const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
           const authUser = usersData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
-          
           if (authUser) {
             userId = authUser.id;
-            console.log(`Found existing Auth user (no profile) with ID: ${userId}`);
           } else {
-            console.error("Auth creation error (already exists but not found):", authError);
-            return res.status(400).json({
-              error: `User already exists but could not be retrieved: ${authError.message}`,
-            });
+            return res.status(400).json({ error: `Failed to create user auth: ${authError.message}` });
           }
         } else {
-          console.error("Auth creation error:", authError);
-          return res.status(400).json({
-            error: `Failed to create user: ${authError.message}`,
-          });
+          userId = authData.user.id;
         }
-      } else {
-        userId = authData.user.id;
-        isNewUser = true;
-      }
-    }
 
-    const userCode = generateUserCode(name);
-
-    // Step 2: Upsert profile (using service role, bypasses RLS)
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        {
+        const userCode = generateUserCode(targetName || "User");
+        await supabaseAdmin.from("profiles").upsert({
           id: userId,
-          name,
+          name: targetName || email.split("@")[0],
           email,
-          balance: Number(amount),
+          balance: 0,
           account_status: "active",
           user_code: userCode,
-          weekly_roi_percentage: Number(roi_percentage),
-          roi_percentage: Number(roi_percentage),
-        },
-        { onConflict: "id" }
-      )
-      .select();
-
-    if (profileError) {
-      console.error("Profile upsert error:", profileError);
-      return res.status(400).json({
-        error: `Failed to create profile: ${profileError.message}`,
-      });
+        });
+      }
+    } else {
+      return res.status(400).json({ error: "Please select an existing user or provide user email" });
     }
 
-    // Step 3: Create investment record (using service role, bypasses RLS)
+    // Step 2: Auto-detect open entry window / active cycle to attach
+    const { data: openEntry } = await supabaseAdmin
+      .from("entry_windows")
+      .select("id, cycle_number")
+      .eq("status", "ENTRY_OPEN")
+      .maybeSingle();
+
+    const entryId = openEntry?.id || null;
+
+    // Create investment record (using service role)
     const { data: investment, error: investmentError } = await supabaseAdmin
       .from("investments")
       .insert({
         user_id: userId,
-        amount: Number(amount),
-        roi: Number(roi_percentage),
+        amount: investAmount,
+        units: units,
+        roi: 0,
         plan_id: plan_id || null,
-        start_date,
-        status: "active",
+        entry_id: entryId,
+        start_date: startDate,
+        end_date: new Date(new Date(startDate).getTime() + (7 * 24 * 60 * 60 * 1000)).toISOString(),
+        status: status,
         type: "admin-created",
         duration: 7,
       })
@@ -150,13 +147,12 @@ export default async function handler(req, res) {
     // Success response
     res.status(200).json({
       ok: true,
-      message: "Investor created successfully",
+      message: "Investment created successfully",
       data: {
         user: {
           id: userId,
-          email,
-          name,
-          user_code: userCode,
+          email: targetEmail,
+          name: targetName,
         },
         investment,
       },

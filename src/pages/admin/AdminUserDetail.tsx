@@ -186,7 +186,14 @@ const AdminUserDetail = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{user?.name}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">{user?.name}</h1>
+              {user?.user_code && (
+                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-mono text-sm px-3 py-1">
+                  {user.user_code}
+                </Badge>
+              )}
+            </div>
             <p className="text-muted-foreground">{user?.email}</p>
           </div>
         </div>
