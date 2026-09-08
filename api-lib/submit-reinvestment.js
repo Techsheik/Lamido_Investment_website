@@ -46,12 +46,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. Find current open entry window to automatically link entry_id
+    // 3. Find current open entry window — MUST be ENTRY_OPEN
     const { data: openEntry } = await supabaseAdmin
       .from("entry_windows")
       .select("id")
       .eq("status", "ENTRY_OPEN")
       .maybeSingle();
+
+    if (!openEntry) {
+      return res.status(400).json({
+        error: "Entry Window Closed: Reinvestments are currently closed. You can only submit a reinvestment while an entry window is open."
+      });
+    }
 
     const now = new Date();
     const startDate = now.toISOString();
