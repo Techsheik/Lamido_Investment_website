@@ -297,6 +297,36 @@ export async function sendAdminEmailNotification({
         ctaUrl: `${appUrl}/admin`
       });
 
+    } else if (type === "PAYMENT_PROOF_SUBMITTED") {
+      const amountStr = metadata.amount ? `$${Number(metadata.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Investment Payment";
+      const userCodeStr = userProfile.user_code ? ` [${userProfile.user_code}]` : "";
+      subject = `Payment Proof Submitted: ${amountStr} by ${userProfile.name}${userCodeStr}`;
+      
+      const fileLinkHtml = metadata.filePath ? `<a href="${appUrl}/admin/proofs" style="color: #0284c7; font-weight: 700; text-decoration: underline;">View Uploaded Receipt (${metadata.fileName || "File"})</a>` : (metadata.fileName || "N/A");
+
+      htmlBody = renderExecutiveEmail({
+        categoryTitle: "Payment Proof Verification",
+        subjectHeader: `New Payment Proof Uploaded by ${userProfile.name} (${userProfile.user_code || "N/A"})`,
+        statusBadgeText: "Proof Pending Review",
+        statusBadgeBg: "#fef3c7",
+        statusBadgeColor: "#92400e",
+        highlightLabel: "Payment / Investment Reference",
+        highlightValue: amountStr,
+        quoteTitle: "Investor Payment Note / Details",
+        quoteContent: metadata.proofDescription || "No notes provided.",
+        fields: [
+          { label: "Investor Info", value: `<strong style="font-size: 14px; color: #0f172a;">${userProfile.name}</strong> &nbsp;<span style="font-family: monospace; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${userProfile.user_code || "N/A"}</span>` },
+          { label: "Email Address", value: userProfile.email },
+          { label: "Working Phone", value: `<a href="tel:${userProfile.phone || 'N/A'}" style="color: #0284c7; font-weight: 700; text-decoration: none;">${userProfile.phone || 'N/A'}</a>` },
+          { label: "Payment Date", value: metadata.proofDate || now },
+          { label: "Uploaded Receipt", value: fileLinkHtml },
+          { label: "Transaction ID", value: `<span style="font-family: monospace; font-weight: 700; font-size: 13px; color: #0f172a;">${referenceId || "N/A"}</span>` },
+          { label: "Date Submitted", value: now }
+        ],
+        ctaText: "Review Proofs in Admin Portal",
+        ctaUrl: `${appUrl}/admin`
+      });
+
     } else if (type === "COMPLAINT_SUBMITTED") {
       const category = (metadata.category || "General").toUpperCase();
       subject = `Support Alert: [${category}] ${metadata.title || "User Complaint"} - ${userProfile.name} (${userProfile.user_code || "N/A"})`;

@@ -100,29 +100,33 @@ const Payment = () => {
 
       if (uploadError) throw uploadError;
 
-      // Create proof record
-      const { error: proofError } = await supabase.from("transaction_proofs").insert({
-        user_id: user.id,
-        transaction_id: latestTransaction?.id,
-        reference: latestTransaction?.id,
-        file_path: fileName,
-        file_name: selectedFile.name,
-        file_type: selectedFile.type,
-        status: "pending",
+      // Get user session token for API authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) throw new Error("Authentication session expired. Please log in again.");
+
+      // Submit payment proof to server API (inserts DB records + sends executive email to admin)
+      const res = await fetch("/api/submit-payment-proof", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          filePath: fileName,
+          fileName: selectedFile.name,
+          fileType: selectedFile.type,
+          proofDescription,
+          proofDate,
+          transactionId: latestTransaction?.id,
+        }),
       });
 
-      if (proofError) throw proofError;
-
-      // Create notification for admin
-      const { error: notifyError } = await supabase.from("notifications").insert({
-        user_id: user.id,
-        title: "Payment Proof Submitted",
-        message: `User ${profile.name} submitted payment proof on ${proofDate}: ${proofDescription}`,
-        type: "payment_proof",
-        read: false,
-      });
-
-      if (notifyError) throw notifyError;
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || "Failed to submit payment proof");
+      }
     },
     onSuccess: () => {
       toast({

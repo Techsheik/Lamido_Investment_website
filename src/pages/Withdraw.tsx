@@ -216,7 +216,7 @@ const Withdraw = () => {
 
       toast({
         title: "✅ Withdrawal Request Submitted",
-        description: "Your withdrawal request has been submitted. You'll be notified once processed.",
+        description: "Your withdrawal request has been submitted. The admin will process your request shortly, and your account will be credited with the requested amount using the account number provided in your profile.",
       });
 
       setIsOpen(false);
