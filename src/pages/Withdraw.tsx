@@ -66,6 +66,8 @@ const Withdraw = () => {
       return data;
     },
     enabled: !!user,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   if (loading || !user) {
@@ -117,31 +119,29 @@ const Withdraw = () => {
     return Math.max(0, 7 - daysSinceLastWithdrawal);
   };
 
-  const hasPhone = Boolean(profile?.phone && profile.phone.trim().length >= 5);
-  const hasBankDetails = Boolean(
-    profile?.bank_name &&
-    profile.bank_name.trim().length > 0 &&
-    (profile?.bank_account_number || profile?.account_number) &&
-    (profile.bank_account_number || profile.account_number).trim().length > 0
-  );
-  const hasCompleteProfile = hasPhone && hasBankDetails;
+  const phoneVal = (profile?.phone || "").trim();
+  const bankNameVal = (profile?.bank_name || "").trim();
+  const accNumVal = (profile?.bank_account_number || profile?.account_number || "").trim();
+  const accHolderVal = (profile?.account_holder_name || profile?.name || "").trim();
+
+  const hasPhone = phoneVal.length >= 5;
+  const hasBankDetails = Boolean(bankNameVal && accNumVal && accHolderVal);
+
+  const missingFields: string[] = [];
+  if (!hasPhone) missingFields.push("Working Phone Number");
+  if (!bankNameVal) missingFields.push("Bank Name");
+  if (!accNumVal) missingFields.push("Account Number");
+  if (!accHolderVal) missingFields.push("Account Holder Name");
+
+  const hasCompleteProfile = missingFields.length === 0;
 
   const handleWithdrawalRequest = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!hasPhone) {
+    if (missingFields.length > 0) {
       toast({
-        title: "Working Phone Number Required 📞",
-        description: "Please update your working phone number in Profile Settings before requesting a withdrawal so admin can verify your payment.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!hasBankDetails) {
-      toast({
-        title: "Bank Details Required 🏦",
-        description: "Please update your Bank Name, Account Number, and Account Holder Name in Profile Settings before requesting a withdrawal.",
+        title: "Profile Information Required ⚠️",
+        description: `Please update the following missing fields in Profile Settings: ${missingFields.join(", ")}`,
         variant: "destructive",
       });
       return;
@@ -242,6 +242,28 @@ const Withdraw = () => {
           <p className="text-muted-foreground mt-2">Request withdrawal of your accrued returns</p>
         </div>
 
+        {!hasCompleteProfile && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="font-bold text-sm flex items-center gap-1.5 text-amber-400">
+                ⚠️ Complete Your Profile to Request Withdrawals
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The following required profile detail{missingFields.length > 1 ? 's are' : ' is'} missing: <span className="font-semibold text-amber-400">{missingFields.join(", ")}</span>
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-amber-500/40 text-amber-400 hover:bg-amber-500/20 whitespace-nowrap"
+              onClick={() => navigate("/profile")}
+            >
+              Update Profile Now &rarr;
+            </Button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -293,13 +315,18 @@ const Withdraw = () => {
                 </DialogHeader>
 
                 {!hasCompleteProfile && (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-xs text-amber-500 space-y-1.5">
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-xs text-amber-500 space-y-2">
                     <div className="font-semibold flex items-center gap-1 text-amber-400">
-                      ⚠️ Profile Details Required for Withdrawal
+                      ⚠️ Missing Required Profile Details
                     </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Before requesting a withdrawal, you must update your <strong>Bank Details</strong> (Bank Name, Account Number, Account Holder Name) and a <strong>Working Phone Number</strong> in your Profile Settings so the admin can verify your request.
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Please update the following required information in Profile Settings before submitting your withdrawal:
                     </p>
+                    <ul className="list-disc list-inside text-xs font-semibold text-amber-300 space-y-0.5">
+                      {missingFields.map((field) => (
+                        <li key={field}>{field}</li>
+                      ))}
+                    </ul>
                     <Button
                       type="button"
                       variant="outline"
