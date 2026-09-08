@@ -383,21 +383,34 @@ export async function sendAdminEmailNotification({
       deliveryStatus = "mock_sent";
     } else {
       const toAddresses = adminEmail.split(",").map(e => e.trim()).filter(Boolean);
-      const resendRes = await sendResendHttpRequest({
-        apiKey: resendApiKey,
-        from: emailFrom,
-        to: toAddresses.length === 1 ? toAddresses[0] : toAddresses,
-        subject,
-        html: htmlBody
-      });
+      let anySuccess = false;
+      const errors = [];
 
-      if (!resendRes.ok) {
-        deliveryStatus = "failed";
-        errorMessage = resendRes.error;
-        console.error(`[EMAIL SERVICE] Resend API failed:`, errorMessage);
-      } else {
+      for (const singleTo of toAddresses) {
+        const resendRes = await sendResendHttpRequest({
+          apiKey: resendApiKey,
+          from: emailFrom,
+          to: [singleTo],
+          subject,
+          html: htmlBody
+        });
+
+        if (resendRes.ok) {
+          anySuccess = true;
+          console.log(`[EMAIL SERVICE] Resend email dispatched successfully to ${singleTo} (ID: ${resendRes.data.id}).`);
+        } else {
+          console.warn(`[EMAIL SERVICE] Resend delivery notice for ${singleTo}:`, resendRes.error);
+          errors.push(`${singleTo}: ${resendRes.error}`);
+        }
+      }
+
+      if (anySuccess) {
         deliveryStatus = "sent";
-        console.log(`[EMAIL SERVICE] Resend email dispatched successfully (ID: ${resendRes.data.id}).`);
+        errorMessage = errors.length > 0 ? `Partial warning: ${errors.join("; ")}` : null;
+      } else {
+        deliveryStatus = "failed";
+        errorMessage = errors.join("; ");
+        console.error(`[EMAIL SERVICE] All email dispatches failed:`, errorMessage);
       }
     }
 
@@ -410,7 +423,6 @@ export async function sendAdminEmailNotification({
           reference_id: referenceId,
           recipient_email: adminEmail,
           email_subject: subject,
-          email_body: htmlBody,
           status: deliveryStatus,
           error_message: errorMessage,
           idempotency_key: idempotencyKey,
