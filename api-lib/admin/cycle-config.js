@@ -9,12 +9,7 @@
  * defaulting to 7 days if unconfigured.
  */
 export function getCycleDurationMs() {
-  const isProd = process.env.NODE_ENV === "production";
-  if (isProd) {
-    return 7 * 24 * 60 * 60 * 1000; // Strictly 7 days in production
-  }
-
-  // Development & Test Mode Accelerated Duration
+  // If CYCLE_DURATION_MINUTES env var is set (e.g. 2 for 2-minute testing), use it
   if (process.env.CYCLE_DURATION_MINUTES) {
     const mins = parseFloat(process.env.CYCLE_DURATION_MINUTES);
     if (!isNaN(mins) && mins > 0) {
@@ -29,7 +24,7 @@ export function getCycleDurationMs() {
     }
   }
 
-  // Fallback default in development if env var is not set
+  // Default to 7 days (604,800,000 ms)
   return 7 * 24 * 60 * 60 * 1000;
 }
 
