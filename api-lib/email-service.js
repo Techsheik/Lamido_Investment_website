@@ -175,7 +175,7 @@ export async function sendAdminEmailNotification({
   idempotencyKey,
   supabaseAdmin
 }) {
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "ibrahimabdullahiok@gmail.com";
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "ibrahimabdullahok@gmail.com, lamidocryptotradingcommunity@gmail.com";
   const resendApiKey = process.env.RESEND_API_KEY || "";
   const emailFrom = process.env.EMAIL_FROM || "Lamido Investment <onboarding@resend.dev>";
   const appUrl = process.env.APP_URL || "http://localhost:8080";
