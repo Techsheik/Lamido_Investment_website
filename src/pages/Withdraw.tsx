@@ -68,6 +68,8 @@ const Withdraw = () => {
     enabled: !!user,
     staleTime: 0,
     refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: 3000,
   });
 
   if (loading || !user) {
