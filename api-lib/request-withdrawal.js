@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { verifyUser } from "./admin/auth-check.js";
 import { sendAdminEmailNotification } from "./email-service.js";
+import { isDevAcceleratedMode } from "./admin/cycle-config.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -66,8 +67,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check 7-Day Frequency Rule if last_withdrawal_date exists
-    if (profile?.last_withdrawal_date) {
+    // Check 7-Day Frequency Rule if last_withdrawal_date exists (bypassed in test mode)
+    const isTestMode = isDevAcceleratedMode();
+    if (!isTestMode && profile?.last_withdrawal_date) {
       const lastWithdrawal = new Date(profile.last_withdrawal_date);
       const now = new Date();
       const daysSince = Math.floor((now.getTime() - lastWithdrawal.getTime()) / (1000 * 60 * 60 * 24));
@@ -91,9 +93,9 @@ export default async function handler(req, res) {
     const activeAccrued = (investments || []).reduce((sum, inv) => {
       if (!inv.start_date) return sum;
       const startDate = new Date(inv.start_date);
+      const endDate = inv.end_date ? new Date(inv.end_date) : new Date(startDate.getTime() + 7 * 86400000);
       const now = new Date();
-      const daysPassed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysPassed >= 7 || inv.status === "completed") {
+      if (now >= endDate || inv.status === "completed") {
         const totalReturn = Number(inv.amount) * Number(inv.roi || 0) / 100;
         return sum + totalReturn;
       }
