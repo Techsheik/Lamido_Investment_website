@@ -54,6 +54,25 @@ const Withdraw = () => {
     enabled: !!user,
   });
 
+  const { data: pendingTransactions } = useQuery({
+    queryKey: ["pending-withdrawals", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("type", "withdrawal")
+        .eq("status", "pending");
+      return data || [];
+    },
+    enabled: !!user,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: 3000,
+  });
+
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
     queryFn: async () => {
@@ -83,8 +102,9 @@ const Withdraw = () => {
   }
 
   const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
+  const totalPendingWithdrawals = pendingTransactions?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0;
   
-  // Calculate Total Accrued Return / Available Balance
+  // Calculate Total Accrued Return / Net Available Balance (minus pending withdrawals)
   const profileBalance = Number(profile?.balance || profile?.accrued_return || profile?.total_roi || 0);
   const activeAccrued = investments?.reduce((sum, inv) => {
     if (!inv.start_date) return sum;
@@ -98,7 +118,8 @@ const Withdraw = () => {
     return sum;
   }, 0) || 0;
 
-  const totalAccruedReturn = Math.max(profileBalance, activeAccrued);
+  const grossAccruedReturn = Math.max(profileBalance, activeAccrued);
+  const totalAccruedReturn = Math.max(0, grossAccruedReturn - totalPendingWithdrawals);
 
   // Check if user can withdraw (must be at least 7 days since last withdrawal or first time)
   const canWithdraw = () => {
@@ -266,6 +287,22 @@ const Withdraw = () => {
           </div>
         )}
 
+        {totalPendingWithdrawals > 0 && (
+          <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-500 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="font-bold text-sm flex items-center gap-1.5 text-blue-400">
+                ⏳ Pending Withdrawal Under Admin Review
+              </div>
+              <p className="text-xs text-muted-foreground">
+                You currently have <span className="font-bold text-blue-400">${totalPendingWithdrawals.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span> in pending withdrawal requests awaiting admin approval. New withdrawal requests are locked until processed.
+              </p>
+            </div>
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40 px-3 py-1 font-bold whitespace-nowrap">
+              Pending Admin Review
+            </Badge>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -287,7 +324,12 @@ const Withdraw = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-success">${totalAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Accrued returns (7+ days)</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {totalPendingWithdrawals > 0 
+                  ? `Net Available ($${grossAccruedReturn.toFixed(2)} minus $${totalPendingWithdrawals.toFixed(2)} pending)`
+                  : "Accrued returns (7+ days)"
+                }
+              </p>
               {!canWithdraw() && (
                 <p className="text-xs text-destructive mt-2">
                   Next withdrawal available in {daysUntilNextWithdrawal()} day{daysUntilNextWithdrawal() !== 1 ? 's' : ''}
@@ -304,8 +346,8 @@ const Withdraw = () => {
           <CardContent>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full md:w-auto" disabled={!canWithdraw()}>
-                  Request Withdrawal
+                <Button className="w-full md:w-auto" disabled={!canWithdraw() || totalAccruedReturn <= 0 || totalPendingWithdrawals > 0}>
+                  {totalPendingWithdrawals > 0 ? "Withdrawal Pending Review..." : "Request Withdrawal"}
                 </Button>
               </DialogTrigger>
               <DialogContent>

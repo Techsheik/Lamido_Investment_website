@@ -89,6 +89,16 @@ export default async function handler(req, res) {
 
     if (invErr) throw invErr;
 
+    // Fetch existing pending withdrawal transactions
+    const { data: pendingTxs } = await supabaseAdmin
+      .from("transactions")
+      .select("amount")
+      .eq("user_id", user.id)
+      .eq("type", "withdrawal")
+      .eq("status", "pending");
+
+    const totalPendingWithdrawalAmount = (pendingTxs || []).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
     const profileBalance = Number(profile?.balance || profile?.accrued_return || profile?.total_roi || 0);
     const activeAccrued = (investments || []).reduce((sum, inv) => {
       if (!inv.start_date) return sum;
@@ -102,19 +112,25 @@ export default async function handler(req, res) {
       return sum;
     }, 0);
 
-    const availableBalance = Math.max(profileBalance, activeAccrued);
+    const grossAvailableBalance = Math.max(profileBalance, activeAccrued);
+    const netAvailableBalance = Math.max(0, grossAvailableBalance - totalPendingWithdrawalAmount);
 
-    // Reject if balance is zero or less
-    if (availableBalance <= 0) {
+    // Reject if net balance is zero or less
+    if (netAvailableBalance <= 0) {
+      if (totalPendingWithdrawalAmount > 0) {
+        return res.status(400).json({
+          error: `Pending Withdrawal Exists: You already have $${totalPendingWithdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })} in pending withdrawal requests awaiting admin approval. Net available balance for new withdrawals is $0.00.`
+        });
+      }
       return res.status(400).json({
         error: "Insufficient funds. You do not have any available balance or accrued returns for withdrawal at this time."
       });
     }
 
-    // Reject if requested amount exceeds available balance
-    if (withdrawalAmount > availableBalance) {
+    // Reject if requested amount exceeds net available balance
+    if (withdrawalAmount > netAvailableBalance) {
       return res.status(400).json({
-        error: `Insufficient funds. Requested amount ($${withdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}) exceeds your available balance of $${availableBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}.`
+        error: `Insufficient funds. Requested amount ($${withdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}) exceeds your net available balance of $${netAvailableBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })} (Pending requests: $${totalPendingWithdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}).`
       });
     }
 

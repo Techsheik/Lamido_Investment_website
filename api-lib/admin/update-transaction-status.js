@@ -58,11 +58,33 @@ export default async function handler(req, res) {
           .eq("status", "pending");
 
       } else if (type === "withdrawal") {
-        // Deduct from balance
-        const newBalance = Number(currentBalance || 0) - Number(amount);
+        // Fetch fresh profile balance & accrued return
+        const { data: uProf } = await supabaseAdmin
+          .from("profiles")
+          .select("balance, accrued_return")
+          .eq("id", userId)
+          .single();
+
+        let curBal = Number(uProf?.balance || 0);
+        let curAccrued = Number(uProf?.accrued_return || 0);
+        let toDeduct = Number(amount || 0);
+
+        if (curBal >= toDeduct) {
+          curBal -= toDeduct;
+          toDeduct = 0;
+        } else {
+          toDeduct -= curBal;
+          curBal = 0;
+          curAccrued = Math.max(0, curAccrued - toDeduct);
+        }
+
         const { error: balanceError } = await supabaseAdmin
           .from("profiles")
-          .update({ balance: newBalance })
+          .update({ 
+            balance: curBal,
+            accrued_return: curAccrued,
+            last_withdrawal_date: new Date().toISOString()
+          })
           .eq("id", userId);
 
         if (balanceError) throw balanceError;
