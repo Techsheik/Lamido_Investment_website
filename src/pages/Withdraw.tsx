@@ -119,10 +119,10 @@ const Withdraw = () => {
     return Math.max(0, 7 - daysSinceLastWithdrawal);
   };
 
-  const phoneVal = (profile?.phone || "").trim();
+  const phoneVal = (profile?.phone || user?.user_metadata?.phone || "").trim();
   const bankNameVal = (profile?.bank_name || "").trim();
   const accNumVal = (profile?.bank_account_number || profile?.account_number || "").trim();
-  const accHolderVal = (profile?.account_holder_name || profile?.name || "").trim();
+  const accHolderVal = (profile?.account_holder_name || profile?.name || user?.user_metadata?.name || "").trim();
 
   const hasPhone = phoneVal.length >= 5;
   const hasBankDetails = Boolean(bankNameVal && accNumVal && accHolderVal);
