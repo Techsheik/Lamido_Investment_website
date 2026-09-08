@@ -270,6 +270,33 @@ export async function sendAdminEmailNotification({
         ctaUrl: `${appUrl}/admin`
       });
 
+    } else if (type === "REINVESTMENT_REQUEST") {
+      const amount = metadata.amount ? `$${Number(metadata.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00";
+      const units = metadata.units || 1;
+      const userCodeStr = userProfile.user_code ? ` [${userProfile.user_code}]` : "";
+      subject = `Reinvestment Request: ${amount} (${units} Unit${units > 1 ? 's' : ''}) by ${userProfile.name}${userCodeStr}`;
+      
+      htmlBody = renderExecutiveEmail({
+        categoryTitle: "Reinvestment Share Unit Request",
+        subjectHeader: `New Reinvestment from ${userProfile.name} (${userProfile.user_code || "N/A"})`,
+        statusBadgeText: "Pending Review",
+        statusBadgeBg: "#e0f2fe",
+        statusBadgeColor: "#0369a1",
+        highlightLabel: "Reinvested Capital Amount",
+        highlightValue: amount,
+        fields: [
+          { label: "Investor Info", value: `<strong style="font-size: 14px; color: #0f172a;">${userProfile.name}</strong> &nbsp;<span style="font-family: monospace; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${userProfile.user_code || "N/A"}</span>` },
+          { label: "Email Address", value: userProfile.email },
+          { label: "Working Phone", value: `<a href="tel:${userProfile.phone || 'N/A'}" style="color: #0284c7; font-weight: 700; text-decoration: none;">${userProfile.phone || 'N/A'}</a>` },
+          { label: "Share Units", value: `<span style="font-family: monospace; font-weight: 700; font-size: 14px; color: #0f172a;">${units} Unit${units > 1 ? 's' : ''} ($70/unit)</span>` },
+          { label: "Funding Source", value: "Internal Accrued Balance / Profit" },
+          { label: "Investment ID", value: referenceId },
+          { label: "Date Submitted", value: now }
+        ],
+        ctaText: "Review in Admin Portal",
+        ctaUrl: `${appUrl}/admin`
+      });
+
     } else if (type === "COMPLAINT_SUBMITTED") {
       const category = (metadata.category || "General").toUpperCase();
       subject = `Support Alert: [${category}] ${metadata.title || "User Complaint"} - ${userProfile.name} (${userProfile.user_code || "N/A"})`;

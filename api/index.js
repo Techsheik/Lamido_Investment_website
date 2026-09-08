@@ -29,6 +29,7 @@ import openEntryHandler from "../api-lib/admin/open-entry.js";
 import closeEntryHandler from "../api-lib/admin/close-entry.js";
 import startCycleHandler from "../api-lib/admin/start-cycle.js";
 import resetInvestmentsHandler from "../api-lib/admin/reset-investments.js";
+import submitReinvestmentHandler from "../api-lib/submit-reinvestment.js";
 
 const routes = {
   "GET": {
@@ -67,6 +68,7 @@ const routes = {
     "/api/admin/reset-investments": resetInvestmentsHandler,
     "/api/request-withdrawal": requestWithdrawalHandler,
     "/api/submit-complaint": submitComplaintHandler,
+    "/api/submit-reinvestment": submitReinvestmentHandler,
   },
   "PUT": {
     "/api/admin/announcements": announcementsHandler,

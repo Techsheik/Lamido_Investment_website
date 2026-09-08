@@ -40,6 +40,7 @@ import updateInvestmentHandler from "./api-lib/admin/update-investment.js";
 import updatePlanHandler from "./api-lib/admin/update-plan.js";
 import requestWithdrawalHandler from "./api-lib/request-withdrawal.js";
 import submitComplaintHandler from "./api-lib/submit-complaint.js";
+import submitReinvestmentHandler from "./api-lib/submit-reinvestment.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -180,6 +181,7 @@ try {
           "/api/admin/reset-investments": resetInvestmentsHandler,
           "/api/request-withdrawal": requestWithdrawalHandler,
           "/api/submit-complaint": submitComplaintHandler,
+          "/api/submit-reinvestment": submitReinvestmentHandler,
         },
         "PUT": {
           "/api/admin/announcements": announcementsHandler,

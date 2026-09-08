@@ -46,53 +46,26 @@ export function ReinvestDialog({
         throw new Error(`Insufficient balance. You need $${totalAmount} to purchase ${numUnits} unit(s).`);
       }
 
-      const now = new Date();
-      const startDate = now.toISOString();
-      const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      // 1. Create investment record with type "Reinvestment"
-      const { data: invData, error: invErr } = await supabase
-        .from("investments")
-        .insert({
-          user_id: user.id,
-          amount: totalAmount,
+      const res = await fetch("/api/submit-reinvestment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           units: numUnits,
-          type: "Reinvestment Share Units",
-          roi: 0,
-          duration: 7,
-          start_date: startDate,
-          end_date: endDate,
-          status: "pending",
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (invErr) throw invErr;
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || "Failed to submit reinvestment request.");
+      }
 
-      // 2. Create reinvestment audit transaction
-      const { error: txErr } = await supabase
-        .from("transactions")
-        .insert({
-          user_id: user.id,
-          type: "reinvestment",
-          amount: totalAmount,
-          status: "completed",
-          date: startDate,
-        });
-
-      if (txErr) console.error("Reinvestment transaction log error:", txErr);
-
-      // 3. Deduct reinvested amount from user profile balance
-      const newBalance = Math.max(0, userBalance - totalAmount);
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({
-          balance: newBalance,
-          updated_at: startDate,
-        })
-        .eq("id", user.id);
-
-      if (profileErr) throw profileErr;
+      return resData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["investments"] });
