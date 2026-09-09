@@ -149,32 +149,17 @@ export default async function handler(req, res) {
 
     if (txErr) throw txErr;
 
-    // 6. IMMEDIATELY DEDUCT FUNDS FROM PROFILE BALANCE TO PREVENT DOUBLE-SPENDING/REINVESTMENT
-    let curBal = Number(profile?.balance || 0);
-    let curAccrued = Number(profile?.accrued_return || 0);
-    let toDeduct = withdrawalAmount;
-
-    if (curBal >= toDeduct) {
-      curBal -= toDeduct;
-      toDeduct = 0;
-    } else {
-      toDeduct -= curBal;
-      curBal = 0;
-      curAccrued = Math.max(0, curAccrued - toDeduct);
-    }
-
+    // 6. Update Profile's Last Withdrawal Date
     try {
       await supabaseAdmin
         .from("profiles")
         .update({
-          balance: curBal,
-          accrued_return: curAccrued,
           last_withdrawal_date: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq("id", user.id);
     } catch (e) {
-      console.warn("Failed to update profile balance on withdrawal request:", e);
+      console.warn("Failed to update last_withdrawal_date:", e);
     }
 
     // 7. Dispatch Executive Admin Email Notification

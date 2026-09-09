@@ -305,31 +305,43 @@ const Withdraw = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Balance
+                Total Invested Capital
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">${totalInvested.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">Total invested capital</p>
+              <p className="text-xs text-muted-foreground mt-1">Total active capital</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Available to Withdraw
+                Total Accrued Profit / Return
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-success">${totalAccruedReturn.toFixed(2)}</div>
+              <div className="text-3xl font-bold text-emerald-500">${grossAccruedReturn.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Total earned account returns</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Available for New Withdrawal
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-primary">${totalAccruedReturn.toFixed(2)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {totalPendingWithdrawals > 0 
-                  ? `Net Available ($${grossAccruedReturn.toFixed(2)} minus $${totalPendingWithdrawals.toFixed(2)} pending)`
-                  : "Accrued returns (7+ days)"
+                  ? `Net ($${grossAccruedReturn.toFixed(2)} minus $${totalPendingWithdrawals.toFixed(2)} pending)`
+                  : "Ready for withdrawal"
                 }
               </p>
               {!canWithdraw() && (
