@@ -13,7 +13,7 @@ import { Loader2, User, Phone, CreditCard, CheckCircle2, Lock, ShieldCheck } fro
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export default function Profile() {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshProfile, updateProfileState } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -156,9 +156,22 @@ export default function Profile() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
-      queryClient.invalidateQueries({ queryKey: ["bank-details"] });
+      const finalPhone = phone.trim() || savedPhone;
+      const finalBankName = bankName.trim() || savedBankName;
+      const finalAccNum = accountNumber.trim() || savedAccountNumber;
+      const finalAccHolder = accountHolderName.trim() || savedAccountHolder;
+
+      updateProfileState({
+        phone: finalPhone,
+        bank_name: finalBankName,
+        bank_account_number: finalAccNum,
+        account_number: finalAccNum,
+        account_holder_name: finalAccHolder,
+        routing_number: routingNumber.trim() || undefined,
+      });
+
+      refreshProfile();
+      queryClient.invalidateQueries();
       refetch();
       toast({
         title: "✅ Profile & Bank Details Saved!",

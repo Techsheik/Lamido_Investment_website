@@ -71,6 +71,25 @@ const Investments = () => {
     staleTime: 5000,
   });
 
+  const { data: pendingWithdrawalTxs = [] } = useQuery({
+    queryKey: ["pending-withdrawals-count", user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from("transactions")
+        .select("amount")
+        .eq("user_id", user.id)
+        .eq("type", "withdrawal")
+        .eq("status", "pending");
+      return data || [];
+    },
+    enabled: !!user,
+    staleTime: 3000,
+  });
+
+  const totalPendingWithdrawalAmt = pendingWithdrawalTxs.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const netAvailableBalance = Math.max(0, Number((userProfile as any)?.balance || 0) - totalPendingWithdrawalAmt);
+
   const { data: cycleData, refetch: refetchCycles } = useQuery({
     queryKey: ["cycles-info"],
     queryFn: async () => {
@@ -602,7 +621,7 @@ const Investments = () => {
       <ReinvestDialog
         open={isReinvestOpen}
         onOpenChange={setIsReinvestOpen}
-        userBalance={Number((userProfile as any)?.balance || 0)}
+        userBalance={netAvailableBalance}
       />
     </DashboardLayout>
   );

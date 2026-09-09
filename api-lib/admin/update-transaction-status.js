@@ -58,36 +58,43 @@ export default async function handler(req, res) {
           .eq("status", "pending");
 
       } else if (type === "withdrawal") {
-        // Fetch fresh profile balance & accrued return
+        // Funds were already deducted from profile balance at the moment of request submission.
+        // Update last_withdrawal_date to mark official payout completion.
+        await supabaseAdmin
+          .from("profiles")
+          .update({ 
+            last_withdrawal_date: new Date().toISOString()
+          })
+          .eq("id", userId);
+      }
+    }
+
+    // 3. Logic for rejected/cancelled transactions (restore funds if withdrawal was rejected)
+    if ((status === "rejected" || status === "cancelled") && userId) {
+      const txType = (type || transaction?.type || "").toLowerCase();
+      const txAmount = Number(amount || transaction?.amount || 0);
+
+      if (txType === "withdrawal" && txAmount > 0) {
+        // Fetch current profile balance to refund the rejected withdrawal
         const { data: uProf } = await supabaseAdmin
           .from("profiles")
           .select("balance, accrued_return")
           .eq("id", userId)
           .single();
 
-        let curBal = Number(uProf?.balance || 0);
-        let curAccrued = Number(uProf?.accrued_return || 0);
-        let toDeduct = Number(amount || 0);
+        if (uProf) {
+          const restoredBalance = Number(uProf.balance || 0) + txAmount;
+          const restoredAccrued = Number(uProf.accrued_return || 0) + txAmount;
 
-        if (curBal >= toDeduct) {
-          curBal -= toDeduct;
-          toDeduct = 0;
-        } else {
-          toDeduct -= curBal;
-          curBal = 0;
-          curAccrued = Math.max(0, curAccrued - toDeduct);
+          await supabaseAdmin
+            .from("profiles")
+            .update({
+              balance: restoredBalance,
+              accrued_return: restoredAccrued,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", userId);
         }
-
-        const { error: balanceError } = await supabaseAdmin
-          .from("profiles")
-          .update({ 
-            balance: curBal,
-            accrued_return: curAccrued,
-            last_withdrawal_date: new Date().toISOString()
-          })
-          .eq("id", userId);
-
-        if (balanceError) throw balanceError;
       }
     }
 

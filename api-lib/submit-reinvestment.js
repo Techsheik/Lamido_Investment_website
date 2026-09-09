@@ -28,10 +28,10 @@ export default async function handler(req, res) {
     const UNIT_PRICE = 70;
     const totalAmount = numUnits * UNIT_PRICE;
 
-    // 2. Fetch Profile & Check Balance
+    // 2. Fetch Profile & Check Net Available Balance
     const { data: profile, error: profErr } = await supabaseAdmin
       .from("profiles")
-      .select("balance, name, user_code, email")
+      .select("balance, accrued_return, name, user_code, email")
       .eq("id", user.id)
       .single();
 
@@ -39,8 +39,24 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "User profile not found" });
     }
 
+    // Fetch existing pending withdrawal transactions
+    const { data: pendingTxs } = await supabaseAdmin
+      .from("transactions")
+      .select("amount")
+      .eq("user_id", user.id)
+      .eq("type", "withdrawal")
+      .eq("status", "pending");
+
+    const totalPendingWithdrawals = (pendingTxs || []).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
     const userBalance = Number(profile.balance || 0);
-    if (userBalance < totalAmount) {
+    const netAvailableBalance = Math.max(0, userBalance - totalPendingWithdrawals);
+
+    if (netAvailableBalance < totalAmount) {
+      if (totalPendingWithdrawals > 0) {
+        return res.status(400).json({
+          error: `Pending Withdrawal Lock: You have $${totalPendingWithdrawals.toLocaleString("en-US", { minimumFractionDigits: 2 })} in pending withdrawal requests awaiting admin approval. Net available balance for reinvestment is $${netAvailableBalance.toFixed(2)}.`
+        });
+      }
       return res.status(400).json({
         error: `Insufficient balance ($${userBalance.toFixed(2)}). You need $${totalAmount.toFixed(2)} to purchase ${numUnits} share unit(s).`
       });
