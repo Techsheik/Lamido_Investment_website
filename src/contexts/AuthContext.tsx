@@ -41,19 +41,63 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (authUser: User) => {
     try {
-      const { data } = await supabase
+      const { data: prof } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
-        .single();
-      if (data) {
-        setProfile(data);
-        return data;
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      const userMeta = authUser.user_metadata || {};
+      const metaName = userMeta.name || `${userMeta.first_name || ''} ${userMeta.surname || ''}`.trim() || authUser.email?.split('@')[0] || "Investor";
+      const metaPhone = userMeta.phone || '';
+
+      if (!prof) {
+        // Create initial profile row if missing for a brand new user
+        const { data: newProf } = await supabase
+          .from('profiles')
+          .upsert({
+            id: authUser.id,
+            email: authUser.email,
+            name: metaName,
+            phone: metaPhone,
+            first_name: userMeta.first_name || null,
+            surname: userMeta.surname || null,
+            country: userMeta.country || null,
+            state: userMeta.state || null,
+            lga: userMeta.lga || null,
+            balance: 0,
+            account_status: 'active'
+          })
+          .select('*')
+          .single();
+
+        if (newProf) {
+          setProfile(newProf);
+          return newProf;
+        }
+      } else {
+        // Auto-sync missing metadata to existing profile row
+        const updates: any = {};
+        if (!prof.name && metaName) updates.name = metaName;
+        if (!prof.phone && metaPhone) updates.phone = metaPhone;
+        if (!prof.email && authUser.email) updates.email = authUser.email;
+        if (!prof.first_name && userMeta.first_name) updates.first_name = userMeta.first_name;
+        if (!prof.surname && userMeta.surname) updates.surname = userMeta.surname;
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('profiles').update(updates).eq('id', authUser.id);
+          const updatedProf = { ...prof, ...updates };
+          setProfile(updatedProf);
+          return updatedProf;
+        }
+
+        setProfile(prof);
+        return prof;
       }
     } catch (e) {
-      console.warn("Profile fetch warning in AuthContext:", e);
+      console.warn("Profile fetch/sync warning in AuthContext:", e);
     }
     return null;
   };
@@ -65,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          fetchProfile(session.user.id);
+          fetchProfile(session.user);
         } else {
           setProfile(null);
         }
@@ -78,7 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        fetchProfile(session.user);
       } else {
         setProfile(null);
       }
@@ -90,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshProfile = async () => {
     if (!user) return null;
-    return await fetchProfile(user.id);
+    return await fetchProfile(user);
   };
 
   const updateProfileState = (partial: Partial<UserProfile>) => {
