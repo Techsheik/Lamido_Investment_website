@@ -10,8 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, MessageCircle, Copy, Check, Upload, X } from "lucide-react";
+import { ArrowLeft, MessageCircle, Copy, Check, Upload, X, Coins } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { formatUSD, formatNGN } from "@/lib/currency";
 
 const Payment = () => {
   const { user, loading } = useAuth();
@@ -84,6 +86,24 @@ const Payment = () => {
     },
     enabled: !!user,
   });
+
+  // Fetch exchange rate settings
+  const { data: exchangeRateSetting } = useQuery({
+    queryKey: ["usd-ngn-exchange-rate"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "usd_ngn_rate")
+        .maybeSingle();
+      return data?.setting_value ? Number(data.setting_value) : 1550;
+    },
+    staleTime: 60000,
+  });
+
+  const exchangeRate = exchangeRateSetting || 1550;
+  const usdAmount = Number(latestTransaction?.amount || 70);
+  const nairaAmount = usdAmount * exchangeRate;
 
   // Mutation to upload payment proof
   const uploadProofMutation = useMutation({
@@ -217,6 +237,47 @@ const Payment = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Naira Payment Amount Converter Card */}
+            <div className="p-4 bg-gradient-to-br from-emerald-500/15 via-background to-amber-500/10 rounded-xl border-2 border-emerald-500/40 space-y-3">
+              <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2">
+                <div className="flex items-center gap-2 font-black text-sm text-emerald-600 dark:text-emerald-400">
+                  <Coins className="w-5 h-5 text-emerald-500" />
+                  Exact Naira Amount to Transfer
+                </div>
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-mono text-xs font-bold">
+                  Rate: $1 = {formatNGN(exchangeRate)}
+                </Badge>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-card rounded-lg border">
+                <div>
+                  <span className="text-xs text-muted-foreground block font-medium">USD Investment Capital</span>
+                  <span className="text-lg font-bold font-mono text-foreground">{formatUSD(usdAmount)}</span>
+                </div>
+                <div className="sm:text-right">
+                  <span className="text-xs text-emerald-700 dark:text-emerald-300 font-bold block uppercase tracking-wider">Naira Equivalent to Send</span>
+                  <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 block">
+                    {formatNGN(nairaAmount)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                <p className="text-xs text-muted-foreground">
+                  Transfer exact Naira amount via OPay or Mobile Banking app:
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 font-bold gap-1.5 whitespace-nowrap"
+                  onClick={() => copyToClipboard(nairaAmount.toFixed(2), "Naira Amount")}
+                >
+                  {copiedField === "Naira Amount" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  Copy ₦{nairaAmount.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-4">
               {/* Account Number */}
               <div className="flex items-center justify-between p-4 bg-muted rounded-lg border">

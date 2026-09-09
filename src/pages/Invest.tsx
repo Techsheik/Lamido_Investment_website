@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, CalendarX, Clock, Lock } from "lucide-react";
+import { ArrowLeft, CalendarX, Clock, Lock, Coins, Copy, Check, DollarSign } from "lucide-react";
+import { formatUSD, formatNGN, convertUSDToNGN } from "@/lib/currency";
 
 const Invest = () => {
   const { user, loading } = useAuth();
@@ -75,6 +76,23 @@ const Invest = () => {
   });
 
   const entryIsOpen = !!entryStatus;
+
+  // ── Fetch exchange rate settings ──────────────────────────────────────────
+  const { data: exchangeRateSetting } = useQuery({
+    queryKey: ["usd-ngn-exchange-rate"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "usd_ngn_rate")
+        .maybeSingle();
+      return data?.setting_value ? Number(data.setting_value) : 1550;
+    },
+    staleTime: 60000,
+  });
+
+  const exchangeRate = exchangeRateSetting || 1550;
+  const [copiedNaira, setCopiedNaira] = useState(false);
 
   // ── Create investment mutation ─────────────────────────────────────────────
   const createInvestment = useMutation({
@@ -339,49 +357,114 @@ const Invest = () => {
 
             {/* Units input */}
             <div className="space-y-2">
-              <Label htmlFor="units">Number of Units</Label>
+              <Label htmlFor="units" className="font-bold text-sm flex items-center justify-between">
+                <span>Number of Share Units *</span>
+                <span className="text-xs font-normal text-muted-foreground">$70 USD / Unit</span>
+              </Label>
               <Input
                 id="units"
                 type="number"
-                placeholder="Enter number of units (1 unit = $70)"
+                placeholder="Enter number of units (e.g. 1, 2, 5)"
                 value={units}
                 onChange={(e) => setUnits(e.target.value)}
                 min={1}
                 step={1}
+                className="text-lg font-bold font-mono py-2.5"
               />
-              <p className="text-sm text-muted-foreground">
-                Each unit costs ${UNIT_PRICE}. Minimum 1 unit.
+              <p className="text-xs text-muted-foreground">
+                Each unit costs ${UNIT_PRICE} USD. Minimum 1 unit ($70).
               </p>
             </div>
 
+            {/* Live Dollar & Naira Currency Converter Box */}
+            {units && Number(units) >= 1 && Number.isInteger(Number(units)) && (
+              <div className="p-4 bg-gradient-to-br from-emerald-500/10 via-background to-amber-500/10 rounded-2xl border-2 border-emerald-500/30 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5">
+                  <div className="flex items-center gap-2 font-black text-sm text-emerald-600 dark:text-emerald-400">
+                    <Coins className="w-5 h-5 text-emerald-500" />
+                    Live Dollar ⇄ Naira Converter
+                  </div>
+                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-mono text-xs px-2.5 py-0.5 font-bold">
+                    Rate: $1 = {formatNGN(exchangeRate)}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3.5 bg-card rounded-xl border space-y-1">
+                    <span className="text-xs text-muted-foreground block font-semibold uppercase tracking-wider">
+                      USD Capital Amount
+                    </span>
+                    <span className="text-2xl font-black font-mono text-foreground block">
+                      {formatUSD(Number(units) * UNIT_PRICE)}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 bg-emerald-500/15 dark:bg-emerald-950/40 rounded-xl border-2 border-emerald-500/40 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-emerald-800 dark:text-emerald-300 font-bold uppercase tracking-wider">
+                        Naira Transfer Equivalent
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-emerald-600 hover:bg-emerald-500/20"
+                        onClick={() => {
+                          const ngnVal = (Number(units) * UNIT_PRICE * exchangeRate).toFixed(2);
+                          navigator.clipboard.writeText(ngnVal);
+                          setCopiedNaira(true);
+                          toast({ title: "Copied!", description: `₦${ngnVal} copied to clipboard` });
+                          setTimeout(() => setCopiedNaira(false), 2000);
+                        }}
+                      >
+                        {copiedNaira ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 block">
+                      {formatNGN(Number(units) * UNIT_PRICE * exchangeRate)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed">
+                  💡 <strong>Transfer Info:</strong> You will transfer the Naira equivalent <strong>{formatNGN(Number(units) * UNIT_PRICE * exchangeRate)}</strong> directly to the admin account.
+                </div>
+              </div>
+            )}
+
             {/* Summary */}
             {units && Number(units) >= 1 && Number.isInteger(Number(units)) && (
-              <div className="p-4 bg-muted/60 rounded-lg space-y-3 border">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Units:</span>
-                  <span className="font-semibold">{Number(units)} unit{Number(units) !== 1 ? "s" : ""}</span>
+              <div className="p-4 bg-muted/60 rounded-xl space-y-3 border">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground font-medium">Selected Units:</span>
+                  <span className="font-bold">{Number(units)} unit{Number(units) !== 1 ? "s" : ""}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Total Capital:</span>
-                  <span className="font-bold text-base">${(Number(units) * UNIT_PRICE).toLocaleString()}</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground font-medium">USD Capital Amount:</span>
+                  <span className="font-bold font-mono text-base">{formatUSD(Number(units) * UNIT_PRICE)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Entry Cycle:</span>
-                  <span className="font-semibold text-green-600">Cycle #{entryStatus?.cycle_number}</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground font-medium">Naira Equivalent (To Send):</span>
+                  <span className="font-extrabold font-mono text-base text-emerald-500">
+                    {formatNGN(Number(units) * UNIT_PRICE * exchangeRate)}
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Payout Model:</span>
-                  <span className="font-semibold text-primary">PPSU (Profit Per Share Unit)</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground font-medium">Entry Cycle:</span>
+                  <span className="font-bold text-green-600">Cycle #{entryStatus?.cycle_number}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground font-medium">Payout Model:</span>
+                  <span className="font-bold text-primary">PPSU (Profit Per Share Unit)</span>
                 </div>
                 <div className="pt-2 border-t space-y-1.5 text-xs text-muted-foreground">
                   <p className="flex items-start gap-1.5 text-foreground/80 font-medium">
                     <span className="text-primary">•</span>
                     Your investment will be activated when the admin starts Cycle #{entryStatus?.cycle_number}.
-                    The 7-day clock starts from the cycle start time, not your submission time.
                   </p>
                   <p className="flex items-start gap-1.5 text-amber-500 font-medium">
                     <span>•</span>
-                    Profit is distributed based on actual community performance. Returns are not fixed.
+                    Profit is distributed based on actual community performance.
                   </p>
                 </div>
               </div>
@@ -390,7 +473,7 @@ const Invest = () => {
 
           <CardFooter>
             <Button
-              className="w-full"
+              className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 text-base shadow-md"
               size="lg"
               onClick={() => createInvestment.mutate()}
               disabled={
@@ -403,7 +486,9 @@ const Invest = () => {
             >
               {createInvestment.isPending
                 ? "Submitting..."
-                : `Submit ${units ? Number(units) : ""} Unit${units && Number(units) !== 1 ? "s" : ""} — $${units && Number(units) >= 1 ? (Number(units) * UNIT_PRICE).toLocaleString() : "0"}`}
+                : units && Number(units) >= 1
+                ? `Submit ${Number(units)} Unit${Number(units) !== 1 ? "s" : ""} — ${formatUSD(Number(units) * UNIT_PRICE)} (${formatNGN(Number(units) * UNIT_PRICE * exchangeRate)})`
+                : "Submit Investment"}
             </Button>
           </CardFooter>
         </Card>
