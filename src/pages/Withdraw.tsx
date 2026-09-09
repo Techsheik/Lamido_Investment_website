@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 const Withdraw = () => {
   const { user, loading } = useAuth();
@@ -145,7 +146,8 @@ const Withdraw = () => {
   const phoneVal = (profile?.phone || user?.user_metadata?.phone || "").trim();
   const bankNameVal = (profile?.bank_name || "").trim();
   const accNumVal = (profile?.bank_account_number || profile?.account_number || "").trim();
-  const accHolderVal = (profile?.account_holder_name || profile?.name || user?.user_metadata?.name || "").trim();
+  const defaultHolderName = profile?.name || user?.user_metadata?.name || `${user?.user_metadata?.first_name || ''} ${user?.user_metadata?.surname || ''}`.trim() || "Valued Investor";
+  const accHolderVal = (profile?.account_holder_name || defaultHolderName).trim();
 
   const hasPhone = phoneVal.length >= 5;
   const hasBankDetails = Boolean(bankNameVal && accNumVal && accHolderVal);

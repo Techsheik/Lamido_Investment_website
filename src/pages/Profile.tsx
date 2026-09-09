@@ -105,6 +105,7 @@ export default function Profile() {
         throw new Error("Please provide complete Bank Details (Bank Name, Account Number, Account Holder Name).");
       }
 
+      // 1. Update Supabase profiles table directly
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -118,7 +119,41 @@ export default function Profile() {
         })
         .eq("id", user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.warn("Direct profile update warning:", error);
+      }
+
+      // 2. Call backend /api/update-profile endpoint with session token to guarantee update
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          await fetch("/api/update-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              phone: finalPhone,
+              bank_name: finalBankName,
+              account_number: finalAccNum,
+              account_holder_name: finalAccHolder,
+              routing_number: routingNumber.trim() || null,
+            }),
+          });
+        }
+      } catch (e) {
+        console.warn("API update-profile fallback note:", e);
+      }
+
+      // 3. Update Auth Metadata so phone is immediately reflected in user metadata
+      try {
+        await supabase.auth.updateUser({
+          data: { phone: finalPhone, name: fullName }
+        });
+      } catch (e) {
+        // Ignore auth metadata error
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });

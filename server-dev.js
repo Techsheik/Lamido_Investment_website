@@ -42,6 +42,7 @@ import requestWithdrawalHandler from "./api-lib/request-withdrawal.js";
 import submitComplaintHandler from "./api-lib/submit-complaint.js";
 import submitReinvestmentHandler from "./api-lib/submit-reinvestment.js";
 import submitPaymentProofHandler from "./api-lib/submit-payment-proof.js";
+import updateProfileHandler from "./api-lib/update-profile.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -121,6 +122,9 @@ try {
   // User actions with email notification
   app.post("/api/request-withdrawal", requestWithdrawalHandler);
   app.post("/api/submit-complaint", submitComplaintHandler);
+  app.post("/api/submit-reinvestment", submitReinvestmentHandler);
+  app.post("/api/submit-payment-proof", submitPaymentProofHandler);
+  app.post("/api/update-profile", updateProfileHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -184,6 +188,7 @@ try {
           "/api/submit-complaint": submitComplaintHandler,
           "/api/submit-reinvestment": submitReinvestmentHandler,
           "/api/submit-payment-proof": submitPaymentProofHandler,
+          "/api/update-profile": updateProfileHandler,
         },
         "PUT": {
           "/api/admin/announcements": announcementsHandler,

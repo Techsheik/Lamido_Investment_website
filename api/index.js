@@ -31,6 +31,7 @@ import startCycleHandler from "../api-lib/admin/start-cycle.js";
 import resetInvestmentsHandler from "../api-lib/admin/reset-investments.js";
 import submitReinvestmentHandler from "../api-lib/submit-reinvestment.js";
 import submitPaymentProofHandler from "../api-lib/submit-payment-proof.js";
+import updateProfileHandler from "../api-lib/update-profile.js";
 
 const routes = {
   "GET": {
@@ -71,6 +72,7 @@ const routes = {
     "/api/submit-complaint": submitComplaintHandler,
     "/api/submit-reinvestment": submitReinvestmentHandler,
     "/api/submit-payment-proof": submitPaymentProofHandler,
+    "/api/update-profile": updateProfileHandler,
   },
   "PUT": {
     "/api/admin/announcements": announcementsHandler,
