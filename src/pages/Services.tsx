@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, TrendingUp, Clock, DollarSign, Shield } from "lucide-react";
+import { ArrowLeft, TrendingUp, Clock, DollarSign, Shield, Coins } from "lucide-react";
+import { formatUSD, formatNGN } from "@/lib/currency";
 
 export default function Services() {
   const navigate = useNavigate();
@@ -22,6 +23,21 @@ export default function Services() {
       return data;
     },
   });
+
+  const { data: exchangeRateSetting } = useQuery({
+    queryKey: ["usd-ngn-exchange-rate"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "usd_ngn_rate")
+        .maybeSingle();
+      return data?.setting_value ? Number(data.setting_value) : 1550;
+    },
+    staleTime: 60000,
+  });
+
+  const exchangeRate = exchangeRateSetting || 1550;
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -56,6 +72,14 @@ export default function Services() {
             <p className="text-xl text-muted-foreground">
               Choose the perfect plan for your financial goals
             </p>
+
+            {/* Live Dollar ⇄ Naira Rate Banner */}
+            <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
+              <Coins className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>
+                <strong>Live Currency Rate:</strong> $1 USD = {formatNGN(exchangeRate)} | 1 Unit ($70 USD) = <strong>{formatNGN(70 * exchangeRate)}</strong>
+              </span>
+            </div>
           </div>
 
           {isLoading ? (
@@ -99,7 +123,9 @@ export default function Services() {
                       <div className="flex items-center gap-2 text-sm">
                         <DollarSign className="h-4 w-4 text-primary" />
                         <span className="text-muted-foreground">Unit Price:</span>
-                        <span className="font-semibold">$70 per unit</span>
+                        <span className="font-bold text-foreground">
+                          $70 per unit <span className="text-emerald-600 dark:text-emerald-400 font-mono text-xs font-bold">({formatNGN(70 * exchangeRate)})</span>
+                        </span>
                       </div>
                       
                       <div className="flex items-center gap-2 text-sm">
@@ -117,7 +143,7 @@ export default function Services() {
                       <div className="flex items-center gap-2 text-sm">
                         <TrendingUp className="h-4 w-4 text-primary" />
                         <span className="text-muted-foreground">Min Investment:</span>
-                        <span className="font-semibold">1 unit ($70)</span>
+                        <span className="font-semibold">1 unit ($70 / {formatNGN(70 * exchangeRate)})</span>
                       </div>
                     </div>
 

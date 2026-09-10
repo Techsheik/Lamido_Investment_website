@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { TrendingUp, ArrowUpRight, Megaphone, ArrowRight, Pin, AlertTriangle, BellRing, Wrench, Info, CheckCircle2 } from "lucide-react";
 import { parseAnnouncement, isAnnouncementExpired, Announcement } from "@/lib/announcement-utils";
+import { formatNGN } from "@/lib/currency";
 
 const Dashboard = () => {
   const { user, loading } = useAuth();
@@ -21,6 +22,22 @@ const Dashboard = () => {
       navigate("/auth");
     }
   }, [user, loading, navigate]);
+
+  // Fetch exchange rate settings
+  const { data: exchangeRateSetting } = useQuery({
+    queryKey: ["usd-ngn-exchange-rate"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "usd_ngn_rate")
+        .maybeSingle();
+      return data?.setting_value ? Number(data.setting_value) : 1550;
+    },
+    staleTime: 60000,
+  });
+
+  const exchangeRate = exchangeRateSetting || 1550;
 
   const { data: investments } = useQuery({
     queryKey: ["investments", user?.id],
@@ -199,7 +216,10 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">${totalInvested.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
+                ≈ {formatNGN(totalInvested * exchangeRate)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {totalInvested === 0 ? "Start investing today" : `${totalUnits} unit${totalUnits !== 1 ? 's' : ''} invested`}
               </p>
             </CardContent>
@@ -213,7 +233,10 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-success">${totalAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Distributed at the end of each 7-day cycle</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
+                ≈ {formatNGN(totalAccruedReturn * exchangeRate)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Distributed at the end of each 7-day cycle</p>
             </CardContent>
           </Card>
 

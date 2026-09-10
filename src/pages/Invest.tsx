@@ -20,7 +20,7 @@ const Invest = () => {
   const planId = searchParams.get("plan");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [units, setUnits] = useState("");
+  const [units, setUnits] = useState("1");
   const UNIT_PRICE = 70; // $70 per unit
 
   useEffect(() => {
@@ -377,60 +377,65 @@ const Invest = () => {
             </div>
 
             {/* Live Dollar & Naira Currency Converter Box */}
-            {units && Number(units) >= 1 && Number.isInteger(Number(units)) && (
-              <div className="p-4 bg-gradient-to-br from-emerald-500/10 via-background to-amber-500/10 rounded-2xl border-2 border-emerald-500/30 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5">
-                  <div className="flex items-center gap-2 font-black text-sm text-emerald-600 dark:text-emerald-400">
-                    <Coins className="w-5 h-5 text-emerald-500" />
-                    Live Dollar ⇄ Naira Converter
-                  </div>
-                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-mono text-xs px-2.5 py-0.5 font-bold">
-                    Rate: $1 = {formatNGN(exchangeRate)}
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3.5 bg-card rounded-xl border space-y-1">
-                    <span className="text-xs text-muted-foreground block font-semibold uppercase tracking-wider">
-                      USD Capital Amount
-                    </span>
-                    <span className="text-2xl font-black font-mono text-foreground block">
-                      {formatUSD(Number(units) * UNIT_PRICE)}
-                    </span>
-                  </div>
-
-                  <div className="p-3.5 bg-emerald-500/15 dark:bg-emerald-950/40 rounded-xl border-2 border-emerald-500/40 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-emerald-800 dark:text-emerald-300 font-bold uppercase tracking-wider">
-                        Naira Transfer Equivalent
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-emerald-600 hover:bg-emerald-500/20"
-                        onClick={() => {
-                          const ngnVal = (Number(units) * UNIT_PRICE * exchangeRate).toFixed(2);
-                          navigator.clipboard.writeText(ngnVal);
-                          setCopiedNaira(true);
-                          toast({ title: "Copied!", description: `₦${ngnVal} copied to clipboard` });
-                          setTimeout(() => setCopiedNaira(false), 2000);
-                        }}
-                      >
-                        {copiedNaira ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      </Button>
+            {(() => {
+              const activeUnits = Math.max(1, Number(units) || 1);
+              const totalUsd = activeUnits * UNIT_PRICE;
+              const totalNgn = totalUsd * exchangeRate;
+              return (
+                <div className="p-4 bg-gradient-to-br from-emerald-500/10 via-background to-amber-500/10 rounded-2xl border-2 border-emerald-500/30 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2.5">
+                    <div className="flex items-center gap-2 font-black text-sm text-emerald-600 dark:text-emerald-400">
+                      <Coins className="w-5 h-5 text-emerald-500" />
+                      Live Dollar ⇄ Naira Converter
                     </div>
-                    <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 block">
-                      {formatNGN(Number(units) * UNIT_PRICE * exchangeRate)}
-                    </span>
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-mono text-xs px-2.5 py-0.5 font-bold">
+                      Rate: $1 = {formatNGN(exchangeRate)}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3.5 bg-card rounded-xl border space-y-1">
+                      <span className="text-xs text-muted-foreground block font-semibold uppercase tracking-wider">
+                        USD Capital Amount ({activeUnits} Unit{activeUnits !== 1 ? 's' : ''})
+                      </span>
+                      <span className="text-2xl font-black font-mono text-foreground block">
+                        {formatUSD(totalUsd)}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 bg-emerald-500/15 dark:bg-emerald-950/40 rounded-xl border-2 border-emerald-500/40 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-emerald-800 dark:text-emerald-300 font-bold uppercase tracking-wider">
+                          Naira Transfer Equivalent
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-emerald-600 hover:bg-emerald-500/20"
+                          onClick={() => {
+                            const ngnVal = totalNgn.toFixed(2);
+                            navigator.clipboard.writeText(ngnVal);
+                            setCopiedNaira(true);
+                            toast({ title: "Copied!", description: `₦${ngnVal} copied to clipboard` });
+                            setTimeout(() => setCopiedNaira(false), 2000);
+                          }}
+                        >
+                          {copiedNaira ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                      <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 block">
+                        {formatNGN(totalNgn)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed">
+                    💡 <strong>Transfer Info:</strong> You will transfer the Naira equivalent <strong>{formatNGN(totalNgn)}</strong> directly to the admin account.
                   </div>
                 </div>
-
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed">
-                  💡 <strong>Transfer Info:</strong> You will transfer the Naira equivalent <strong>{formatNGN(Number(units) * UNIT_PRICE * exchangeRate)}</strong> directly to the admin account.
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Summary */}
             {units && Number(units) >= 1 && Number.isInteger(Number(units)) && (

@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { Coins } from "lucide-react";
+import { formatUSD, formatNGN } from "@/lib/currency";
 
 const Withdraw = () => {
   const { user, loading } = useAuth();
@@ -40,6 +42,22 @@ const Withdraw = () => {
       navigate("/auth");
     }
   }, [user, loading, navigate]);
+
+  // Fetch exchange rate settings
+  const { data: exchangeRateSetting } = useQuery({
+    queryKey: ["usd-ngn-exchange-rate"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("setting_value")
+        .eq("setting_key", "usd_ngn_rate")
+        .maybeSingle();
+      return data?.setting_value ? Number(data.setting_value) : 1550;
+    },
+    staleTime: 60000,
+  });
+
+  const exchangeRate = exchangeRateSetting || 1550;
 
   const { data: investments } = useQuery({
     queryKey: ["investments", user?.id],
@@ -314,7 +332,9 @@ const Withdraw = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">${totalInvested.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">Total active capital</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
+                ≈ {formatNGN(totalInvested * exchangeRate)}
+              </p>
             </CardContent>
           </Card>
 
@@ -326,7 +346,9 @@ const Withdraw = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-emerald-500">${grossAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Total earned account returns</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
+                ≈ {formatNGN(grossAccruedReturn * exchangeRate)}
+              </p>
             </CardContent>
           </Card>
 
@@ -338,11 +360,8 @@ const Withdraw = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-primary">${totalAccruedReturn.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {totalPendingWithdrawals > 0 
-                  ? `Net ($${grossAccruedReturn.toFixed(2)} minus $${totalPendingWithdrawals.toFixed(2)} pending)`
-                  : "Ready for withdrawal"
-                }
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
+                ≈ {formatNGN(totalAccruedReturn * exchangeRate)}
               </p>
               {!canWithdraw() && (
                 <p className="text-xs text-destructive mt-2">
@@ -414,9 +433,27 @@ const Withdraw = () => {
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Available Balance: ${totalAccruedReturn.toFixed(2)}
+                      Available Balance: ${totalAccruedReturn.toFixed(2)} ({formatNGN(totalAccruedReturn * exchangeRate)})
                     </p>
                   </div>
+
+                  {/* Live Dollar ⇄ Naira Payout Calculator Card */}
+                  {amount && Number(amount) > 0 && (
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-500/15 to-amber-500/10 border border-emerald-500/30 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1">
+                          <Coins className="w-3.5 h-3.5" /> Live Naira Payout Converter
+                        </span>
+                        <span className="font-mono text-[11px]">Rate: $1 = {formatNGN(exchangeRate)}</span>
+                      </div>
+                      <div className="flex justify-between items-baseline pt-1">
+                        <span className="text-xs text-muted-foreground">Payout Amount:</span>
+                        <span className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
+                          {formatNGN(Number(amount) * exchangeRate)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="payment-method">Payment Method</Label>
