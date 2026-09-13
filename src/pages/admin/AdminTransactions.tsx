@@ -56,17 +56,21 @@ const AdminTransactions = () => {
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status, transaction }: { id: string; status: string; transaction: any }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not authenticated. Please sign in again.");
+
       const response = await fetch("/api/admin/update-transaction-status", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({
           id,
           status,
-          adminId: user?.id,
-          amount: transaction.amount,
-          type: transaction.type,
           userId: transaction.user_id,
-          currentBalance: transaction.profile?.balance || 0
+          type: transaction.type,
         }),
       });
 

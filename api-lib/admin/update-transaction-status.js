@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { verifyAdmin } from "./auth-check.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -6,24 +7,46 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { id, status, adminId, amount, type, userId, currentBalance } = req.body;
-
-    if (!id || !status) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
     const supabaseAdmin = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    // 1. Update transaction status
+    // SECURITY: Verify admin JWT before allowing any status changes
+    const { adminUserId, error: authErr } = await verifyAdmin(req, supabaseAdmin);
+    if (authErr) {
+      return res.status(authErr.status).json({ error: authErr.message });
+    }
+
+    const { id, status, userId, type } = req.body;
+
+    if (!id || !status) {
+      return res.status(400).json({ error: "Missing required fields: id and status" });
+    }
+
+    // 1. Fetch the transaction from DB first — use DB values, never trust client-supplied amounts
+    const { data: existingTx, error: fetchErr } = await supabaseAdmin
+      .from("transactions")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr || !existingTx) {
+      return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    // Idempotency: already in target state
+    if (existingTx.status === "completed" && status === "approved") {
+      return res.status(200).json({ ok: true, message: "Transaction already completed", transaction: existingTx });
+    }
+
+    // 2. Update transaction status
     const { data: transaction, error: transError } = await supabaseAdmin
       .from("transactions")
-      .update({ 
+      .update({
         status: status === "approved" ? "completed" : status,
         approved_at: new Date().toISOString(),
-        approved_by: adminId 
+        approved_by: adminUserId
       })
       .eq("id", id)
       .select()
@@ -31,15 +54,26 @@ export default async function handler(req, res) {
 
     if (transError) throw transError;
 
-    // 2. Logic for approved transactions
-    if (status === "approved" && userId) {
-      if (type === "deposit") {
-        // Add to balance
-        const newBalance = Number(currentBalance || 0) + Number(amount);
+    const targetUserId = existingTx.user_id || userId;
+    // SECURITY: Always use DB amount, never the client-supplied amount
+    const dbAmount = Number(existingTx.amount || 0);
+    const txType = existingTx.type || type;
+
+    // 3. Logic for approved transactions
+    if (status === "approved" && targetUserId) {
+      if (txType === "deposit") {
+        // Fetch current balance from DB
+        const { data: prof } = await supabaseAdmin
+          .from("profiles")
+          .select("balance")
+          .eq("id", targetUserId)
+          .maybeSingle();
+
+        const newBalance = Number(prof?.balance || 0) + dbAmount;
         const { error: balanceError } = await supabaseAdmin
           .from("profiles")
-          .update({ balance: newBalance })
-          .eq("id", userId);
+          .update({ balance: Math.round(newBalance * 100) / 100 })
+          .eq("id", targetUserId);
 
         if (balanceError) throw balanceError;
 
@@ -54,20 +88,20 @@ export default async function handler(req, res) {
             start_date: now.toISOString(),
             end_date: endDate.toISOString(),
           })
-          .eq("user_id", userId)
+          .eq("user_id", targetUserId)
           .eq("status", "pending");
 
-      } else if (type === "withdrawal") {
-        // Deduct approved withdrawal amount from profile balance
+      } else if (txType === "withdrawal") {
+        // Deduct approved withdrawal amount — use DB amount only
         const { data: uProf } = await supabaseAdmin
           .from("profiles")
           .select("balance, accrued_return")
-          .eq("id", userId)
+          .eq("id", targetUserId)
           .single();
 
         let curBal = Number(uProf?.balance || 0);
         let curAccrued = Number(uProf?.accrued_return || 0);
-        let toDeduct = Number(amount || 0);
+        let toDeduct = dbAmount;
 
         if (curBal >= toDeduct) {
           curBal -= toDeduct;
@@ -80,18 +114,20 @@ export default async function handler(req, res) {
 
         await supabaseAdmin
           .from("profiles")
-          .update({ 
-            balance: curBal,
-            accrued_return: curAccrued,
+          .update({
+            balance: Math.round(curBal * 100) / 100,
+            accrued_return: Math.round(curAccrued * 100) / 100,
             last_withdrawal_date: new Date().toISOString()
           })
-          .eq("id", userId);
+          .eq("id", targetUserId);
       }
     }
 
+    console.log(`[update-transaction-status] Admin ${adminUserId} set tx ${id} → ${status}`);
     res.status(200).json({ ok: true, transaction });
   } catch (err) {
     console.error("Error updating transaction:", err);
     res.status(500).json({ error: err.message });
   }
 }
+

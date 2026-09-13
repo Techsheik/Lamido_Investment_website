@@ -1,14 +1,65 @@
 import https from "https";
+import crypto from "crypto";
 
 // In-memory idempotency cache for immediate process safety
 const processedKeys = new Set();
 
 /**
- * Helper to perform robust HTTPS POST request to Resend API using Node.js native https module.
+ * Generate a cryptographically signed HMAC-SHA256 approval token.
+ * Token payload: base64url( JSON({ transactionId, userId, amount, iat }) ) + "." + signature
  */
-function sendResendHttpRequest({ apiKey, from, to, subject, html }) {
+export function generateApprovalToken({ transactionId, userId, amount, secret }) {
+  const payload = Buffer.from(JSON.stringify({
+    transactionId,
+    userId,
+    amount: Number(amount),
+    iat: Math.floor(Date.now() / 1000)
+  })).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+/**
+ * Verify an HMAC-SHA256 approval token.
+ * Returns { transactionId, userId, amount, iat } or throws.
+ */
+export function verifyApprovalToken(token, secret) {
+  const parts = token.split(".");
+  if (parts.length !== 2) throw new Error("Invalid token format");
+  const [payload, sig] = parts;
+  const expectedSig = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
+  // Constant-time comparison
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length) throw new Error("Token signature invalid");
+  if (!crypto.timingSafeEqual(sigBuf, expectedBuf)) throw new Error("Token signature invalid");
+  const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  // Tokens expire after 7 days
+  if (Date.now() / 1000 - data.iat > 7 * 86400) throw new Error("Token has expired");
+  return data;
+}
+
+/**
+ * Helper to perform robust HTTPS POST request to Resend API using Node.js native https module.
+ * Supports reply-to header.
+ */
+function sendResendHttpRequest({ apiKey, from, to, replyTo, subject, html }) {
   return new Promise((resolve) => {
-    const payload = JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, html });
+    const bodyObj = {
+      from,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html
+    };
+    if (replyTo) bodyObj.reply_to = replyTo;
+
+    const payload = JSON.stringify(bodyObj);
     const options = {
       hostname: "api.resend.com",
       port: 443,
@@ -30,9 +81,11 @@ function sendResendHttpRequest({ apiKey, from, to, subject, html }) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve({ ok: true, data });
           } else {
-            resolve({ ok: false, error: data.message || body });
+            console.error(`[EMAIL SERVICE] Resend API error ${res.statusCode}:`, JSON.stringify(data));
+            resolve({ ok: false, error: data.message || data.name || body });
           }
         } catch (e) {
+          console.error(`[EMAIL SERVICE] Failed to parse Resend response (${res.statusCode}):`, body);
           resolve({ ok: false, error: body || res.statusMessage });
         }
       });
@@ -63,7 +116,8 @@ function renderExecutiveEmail({
   quoteTitle,
   quoteContent,
   ctaText,
-  ctaUrl
+  ctaUrl,
+  customFooterHtml = null
 }) {
   const fieldRowsHtml = fields.map((f) => `
     <tr>
@@ -130,10 +184,8 @@ function renderExecutiveEmail({
                 </table>
               </div>
 
-              <!-- CTA Button -->
-              <div style="margin-top: 32px; text-align: center;">
-                <a href="${ctaUrl}" style="display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 700; padding: 14px 34px; border-radius: 10px; box-shadow: 0 4px 14px rgba(3, 105, 161, 0.3); transition: all 0.2s ease;">${ctaText} &rarr;</a>
-              </div>
+              <!-- CTA Button(s) -->
+              ${customFooterHtml || `<div style="margin-top: 32px; text-align: center;"><a href="${ctaUrl}" style="display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 700; padding: 14px 34px; border-radius: 10px; box-shadow: 0 4px 14px rgba(3, 105, 161, 0.3);">${ctaText} &rarr;</a></div>`}
             </td>
           </tr>
 
@@ -173,7 +225,8 @@ export async function sendAdminEmailNotification({
   userId,
   metadata = {},
   idempotencyKey,
-  supabaseAdmin
+  supabaseAdmin,
+  approvalTokenUrl = null
 }) {
   const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "lamidocryptotradingcommunity@gmail.com";
   const resendApiKey = process.env.RESEND_API_KEY || "";
@@ -240,34 +293,50 @@ export async function sendAdminEmailNotification({
     if (type === "WITHDRAWAL_REQUEST") {
       const amount = metadata.amount ? `$${Number(metadata.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00";
       const userCodeStr = userProfile.user_code ? ` [${userProfile.user_code}]` : "";
-      subject = `Withdrawal Request: ${amount} by ${userProfile.name}${userCodeStr}`;
+      subject = `⚠️ Withdrawal Request: ${amount} — ${userProfile.name}${userCodeStr} (Action Required)`;
       
       const phoneVal = userProfile.phone || metadata.phone || "N/A";
       const bankVal = userProfile.bank_name || metadata.bank_name || "N/A";
       const accNumVal = userProfile.bank_account_number || metadata.account_number || "N/A";
       const accHolderVal = userProfile.account_holder_name || metadata.account_holder_name || userProfile.name;
 
+      // Build the dual-CTA section (approve + review)
+      const approveButtonHtml = approvalTokenUrl ? `
+        <div style="margin-top: 32px; text-align: center;">
+          <a href="${approvalTokenUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 800; padding: 16px 36px; border-radius: 10px; box-shadow: 0 4px 14px rgba(22,163,74,0.35); letter-spacing: 0.3px;">✅ Approve &amp; Mark Completed</a>
+          <div style="margin-top: 14px;">
+            <a href="${appUrl}/admin" style="display: inline-block; background: #f1f5f9; color: #475569; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 24px; border-radius: 8px; border: 1px solid #cbd5e1;">❌ Reject / Review in Admin Portal</a>
+          </div>
+          <p style="font-size: 11px; color: #94a3b8; margin-top: 10px; line-height: 1.5;">The Approve button is a one-time secure link. After clicking, the withdrawal is automatically marked completed and the user's balance is deducted. <strong>Do not share this link.</strong></p>
+        </div>
+      ` : `
+        <div style="margin-top: 32px; text-align: center;">
+          <a href="${appUrl}/admin" style="display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 700; padding: 14px 34px; border-radius: 10px;">Review in Admin Portal &rarr;</a>
+        </div>
+      `;
+
       htmlBody = renderExecutiveEmail({
-        categoryTitle: "Financial Withdrawal Request",
-        subjectHeader: `New Withdrawal Request from ${userProfile.name} (${userProfile.user_code || "N/A"})`,
-        statusBadgeText: "Pending Review",
+        categoryTitle: "Financial Withdrawal Request — Action Required",
+        subjectHeader: `Withdrawal: ${amount} from ${userProfile.name} (${userProfile.user_code || "N/A"})`,
+        statusBadgeText: "Pending Your Approval",
         statusBadgeBg: "#fef3c7",
         statusBadgeColor: "#92400e",
         highlightLabel: "Requested Withdrawal Amount",
         highlightValue: amount,
         fields: [
-          { label: "Investor Info", value: `<strong style="font-size: 14px; color: #0f172a;">${userProfile.name}</strong> &nbsp;<span style="font-family: monospace; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${userProfile.user_code || "N/A"}</span>` },
+          { label: "Investor Name", value: `<strong style="font-size: 14px; color: #0f172a;">${userProfile.name}</strong> &nbsp;<span style="font-family: monospace; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${userProfile.user_code || "N/A"}</span>` },
           { label: "Email Address", value: userProfile.email },
           { label: "Working Phone", value: `<a href="tel:${phoneVal}" style="color: #0284c7; font-weight: 700; text-decoration: none;">${phoneVal}</a>` },
-          { label: "Bank Name", value: bankVal },
-          { label: "Account Number", value: `<span style="font-family: monospace; font-weight: 700; font-size: 14px; color: #0f172a;">${accNumVal}</span>` },
-          { label: "Account Holder", value: accHolderVal },
+          { label: "Bank Name", value: `<strong>${bankVal}</strong>` },
+          { label: "Account Number", value: `<span style="font-family: monospace; font-weight: 800; font-size: 15px; color: #0f172a; background:#f0fdf4; padding: 3px 10px; border-radius:5px;">${accNumVal}</span>` },
+          { label: "Account Holder", value: `<strong>${accHolderVal}</strong>` },
           { label: "Payment Method", value: metadata.payment_method || metadata.payment_info || "Bank Transfer" },
-          { label: "Reference ID", value: referenceId },
+          { label: "Reference ID", value: `<span style="font-family: monospace; font-size: 12px;">${referenceId}</span>` },
           { label: "Date Submitted", value: now }
         ],
         ctaText: "Review in Admin Portal",
-        ctaUrl: `${appUrl}/admin`
+        ctaUrl: `${appUrl}/admin`,
+        customFooterHtml: approveButtonHtml
       });
 
     } else if (type === "REINVESTMENT_REQUEST") {
@@ -385,21 +454,25 @@ export async function sendAdminEmailNotification({
       const toAddresses = adminEmail.split(",").map(e => e.trim()).filter(Boolean);
       let anySuccess = false;
       const errors = [];
+      // reply-to: admin email so replies from forwarded messages go back to admin
+      const replyTo = toAddresses[0] || undefined;
 
       for (const singleTo of toAddresses) {
+        console.log(`[EMAIL SERVICE] Sending via Resend: from=${emailFrom}, to=${singleTo}, subject=${subject}`);
         const resendRes = await sendResendHttpRequest({
           apiKey: resendApiKey,
           from: emailFrom,
           to: [singleTo],
+          replyTo,
           subject,
           html: htmlBody
         });
 
         if (resendRes.ok) {
           anySuccess = true;
-          console.log(`[EMAIL SERVICE] Resend email dispatched successfully to ${singleTo} (ID: ${resendRes.data.id}).`);
+          console.log(`[EMAIL SERVICE] ✅ Email delivered to ${singleTo} (Resend ID: ${resendRes.data?.id}).`);
         } else {
-          console.warn(`[EMAIL SERVICE] Resend delivery notice for ${singleTo}:`, resendRes.error);
+          console.error(`[EMAIL SERVICE] ❌ Delivery FAILED to ${singleTo}:`, resendRes.error);
           errors.push(`${singleTo}: ${resendRes.error}`);
         }
       }

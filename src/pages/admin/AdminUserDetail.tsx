@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save, Download, Check, X } from "lucide-react";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminUserDetail = () => {
   const { userId } = useParams();
@@ -93,18 +94,18 @@ const AdminUserDetail = () => {
   });
 
   const updateTransactionMutation = useMutation({
-    mutationFn: async ({ id, status, amount, type }: { id: string; status: string; amount: number; type: string }) => {
+    mutationFn: async ({ id, status, type }: { id: string; status: string; type: string }) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not authenticated. Please sign in again.");
+
       const response = await fetch("/api/admin/update-transaction-status", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id,
-          status,
-          amount,
-          type,
-          userId,
-          currentBalance: user?.balance || 0
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id, status, userId, type }),
       });
 
       if (!response.ok) {
@@ -395,7 +396,6 @@ const AdminUserDetail = () => {
                             onClick={() => updateTransactionMutation.mutate({
                               id: transaction.id,
                               status: "approved",
-                              amount: transaction.amount,
                               type: transaction.type
                             })}
                           >
@@ -407,7 +407,6 @@ const AdminUserDetail = () => {
                             onClick={() => updateTransactionMutation.mutate({
                               id: transaction.id,
                               status: "rejected",
-                              amount: transaction.amount,
                               type: transaction.type
                             })}
                           >

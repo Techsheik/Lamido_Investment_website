@@ -43,6 +43,7 @@ import submitComplaintHandler from "./api-lib/submit-complaint.js";
 import submitReinvestmentHandler from "./api-lib/submit-reinvestment.js";
 import submitPaymentProofHandler from "./api-lib/submit-payment-proof.js";
 import updateProfileHandler from "./api-lib/update-profile.js";
+import approveWithdrawalHandler from "./api-lib/admin/approve-withdrawal.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -125,6 +126,8 @@ try {
   app.post("/api/submit-reinvestment", submitReinvestmentHandler);
   app.post("/api/submit-payment-proof", submitPaymentProofHandler);
   app.post("/api/update-profile", updateProfileHandler);
+  // Admin email approval flow (GET — no admin login required, token-secured)
+  app.get("/api/admin/approve-withdrawal", approveWithdrawalHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -166,6 +169,7 @@ try {
           "/api/admin/get-cycles": getCyclesHandler,
           "/api/admin/announcements": announcementsHandler,
           "/api/admin/complaints": complaintsHandler,
+          "/api/admin/approve-withdrawal": approveWithdrawalHandler,
         },
         "POST": {
           "/api/admin/create-investor": createInvestorHandler,

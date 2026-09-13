@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { verifyUser } from "./admin/auth-check.js";
-import { sendAdminEmailNotification } from "./email-service.js";
+import { sendAdminEmailNotification, generateApprovalToken } from "./email-service.js";
 import { isDevAcceleratedMode } from "./admin/cycle-config.js";
 
 export default async function handler(req, res) {
@@ -162,8 +162,19 @@ export default async function handler(req, res) {
       console.warn("Failed to update last_withdrawal_date:", e);
     }
 
-    // 7. Dispatch Executive Admin Email Notification
+    // 7. Dispatch Executive Admin Email Notification with signed approval link
     const idempotencyKey = `withdrawal_${transaction.id}`;
+    
+    // Generate a cryptographically signed one-click approval token for the admin email
+    const appUrl = process.env.APP_URL || "http://localhost:8080";
+    const approvalToken = generateApprovalToken({
+      transactionId: transaction.id,
+      userId: user.id,
+      amount: withdrawalAmount,
+      secret: process.env.SUPABASE_SERVICE_ROLE_KEY
+    });
+    const approvalTokenUrl = `${appUrl}/api/admin/approve-withdrawal?token=${encodeURIComponent(approvalToken)}`;
+
     const emailResult = await sendAdminEmailNotification({
       type: "WITHDRAWAL_REQUEST",
       referenceId: transaction.id,
@@ -178,7 +189,8 @@ export default async function handler(req, res) {
         account_holder_name: accountHolderName,
       },
       idempotencyKey,
-      supabaseAdmin
+      supabaseAdmin,
+      approvalTokenUrl
     });
 
     return res.status(200).json({
