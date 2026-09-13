@@ -5,7 +5,8 @@
  *  - NEVER show calculated/estimated profit — only real admin-confirmed distributions.
  *  - When a cycle is completed but NOT yet finalized by admin → show neutral "pending" message.
  *  - When admin has finalized → show actual profit from cycle_distributions table.
- *  - Withdraw / Reinvest buttons ONLY appear after admin-confirmed distribution.
+ *  - Withdraw button ONLY appears after admin-confirmed distribution.
+ *  - NO reinvest button — investors auto-carry into the next cycle.
  */
 
 import { useState } from "react";
@@ -15,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, CheckCircle2, X, ArrowUpRight, RefreshCw } from "lucide-react";
+import { Clock, CheckCircle2, X, ArrowUpRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export function InvestmentNotificationBanner() {
@@ -31,7 +32,6 @@ export function InvestmentNotificationBanner() {
     }
   });
 
-  // Fetch completed investments for this user
   const { data: completedInvestments = [] } = useQuery({
     queryKey: ["completed-notifications", user?.id],
     queryFn: async () => {
@@ -47,7 +47,6 @@ export function InvestmentNotificationBanner() {
     refetchInterval: 15000,
   });
 
-  // Fetch admin-confirmed distributions for this user
   const { data: distributions = [] } = useQuery({
     queryKey: ["user-distributions", user?.id],
     queryFn: async () => {
@@ -70,7 +69,6 @@ export function InvestmentNotificationBanner() {
     } catch { /* ignore */ }
   };
 
-  // Only show non-dismissed completed investments
   const visible = completedInvestments.filter(
     (inv: any) => !dismissed.includes(inv.id)
   );
@@ -84,33 +82,29 @@ export function InvestmentNotificationBanner() {
         const hasDistribution = !!dist;
 
         if (hasDistribution) {
-          // ── Admin HAS finalized — show real confirmed profit ──────────────
           return (
-            <Card
-              key={inv.id}
-              className="relative overflow-hidden border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-background to-emerald-950/10 shadow-md"
-            >
+            <Card key={inv.id} className="relative overflow-hidden border">
               <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className="p-2.5 bg-emerald-500/20 text-emerald-500 rounded-xl mt-0.5 shrink-0">
-                    <CheckCircle2 className="h-5 w-5" />
+                  <div className="p-2 bg-muted rounded-lg mt-0.5 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-semibold text-foreground text-base">
-                        Profit Distributed!
+                        Profit Distributed
                       </h4>
-                      <Badge className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 text-xs border">
+                      <Badge variant="outline" className="text-xs">
                         Cycle #{dist.cycle_number} · Confirmed
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       Your <span className="font-medium text-foreground">{inv.type}</span> investment
-                      (${Number(inv.amount).toLocaleString()}) has been distributed.{" "}
-                      <span className="font-semibold text-emerald-500">
+                      (${Number(inv.amount).toLocaleString()}) cycle completed.{" "}
+                      <span className="font-semibold text-foreground">
                         +${Number(dist.profit).toFixed(2)} profit
                       </span>{" "}
-                      has been added to your balance.
+                      added to your balance. Your investment continues in the next cycle automatically.
                     </p>
                   </div>
                 </div>
@@ -119,25 +113,16 @@ export function InvestmentNotificationBanner() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 gap-1.5 text-xs"
+                    className="gap-1.5 text-xs"
                     onClick={() => navigate("/withdraw")}
                   >
                     <ArrowUpRight className="h-3.5 w-3.5" />
                     Withdraw
                   </Button>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 gap-1.5 text-xs"
-                    onClick={() => navigate("/services")}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Reinvest
-                  </Button>
-                  <Button
                     size="icon"
                     variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                    className="h-8 w-8 shrink-0"
                     onClick={() => handleDismiss(inv.id)}
                   >
                     <X className="h-4 w-4" />
@@ -148,33 +133,26 @@ export function InvestmentNotificationBanner() {
           );
         }
 
-        // ── Admin has NOT finalized yet — neutral "pending" message ──────────
         return (
-          <Card
-            key={inv.id}
-            className="relative overflow-hidden border-amber-500/30 bg-gradient-to-r from-amber-950/10 via-background to-amber-950/5 shadow-sm"
-          >
+          <Card key={inv.id} className="relative overflow-hidden border">
             <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-amber-500/20 text-amber-500 rounded-xl mt-0.5 shrink-0">
-                  <Clock className="h-5 w-5 animate-pulse" />
+                <div className="p-2 bg-muted rounded-lg mt-0.5 shrink-0">
+                  <Clock className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-semibold text-foreground text-base">
                       Cycle Ended — Distribution Pending
                     </h4>
-                    <Badge
-                      variant="outline"
-                      className="border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 text-xs"
-                    >
+                    <Badge variant="outline" className="text-xs">
                       Awaiting Admin
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1 max-w-lg">
                     Your <span className="font-medium text-foreground">{inv.type}</span> cycle
                     has completed. The admin is reviewing the community profit and will
-                    distribute returns shortly. Check back here once it's confirmed.
+                    distribute returns shortly. Your investment continues in the next cycle automatically.
                   </p>
                 </div>
               </div>
@@ -191,7 +169,7 @@ export function InvestmentNotificationBanner() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                  className="h-8 w-8 shrink-0"
                   onClick={() => handleDismiss(inv.id)}
                 >
                   <X className="h-4 w-4" />

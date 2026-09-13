@@ -247,7 +247,7 @@ const Dashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-amber-500">{totalUnits} Units</div>
+              <div className="text-3xl font-bold">{totalUnits} Units</div>
               <p className="text-xs text-muted-foreground mt-1">Eligible for community profit distribution</p>
             </CardContent>
           </Card>
@@ -259,7 +259,7 @@ const Dashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-600">{activeInvestments}</div>
+              <div className="text-3xl font-bold">{activeInvestments}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {activeInvestments === 0 ? "No active plans" : "Plans participating in community ROI"}
               </p>
@@ -299,7 +299,7 @@ const Dashboard = () => {
           <DialogContent className="max-w-md border-amber-500/40">
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
-                <Megaphone className="w-5 h-5 text-amber-500 animate-bounce" />
+                <Megaphone className="w-5 h-5 text-muted-foreground" />
                 {getPriorityBadge(popupAnnouncement.priority)}
               </div>
               <DialogTitle className="text-xl font-bold text-foreground">
