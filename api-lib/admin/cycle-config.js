@@ -4,29 +4,15 @@
 
 /**
  * Returns cycle duration in milliseconds.
- * In PRODUCTION (process.env.NODE_ENV === "production"), strictly forces 7 days (604,800,000 ms).
- * In DEVELOPMENT/TESTing, uses CYCLE_DURATION_MINUTES or CYCLE_DURATION_MS if provided in process.env,
- * defaulting to 7 days if unconfigured.
+ * ALWAYS returns 7 days (604,800,000 ms).
+ * The CYCLE_DURATION_MINUTES override has been permanently removed
+ * to prevent accidental short cycles in production.
  */
 export function getCycleDurationMs() {
-  // If CYCLE_DURATION_MINUTES env var is set (e.g. 2 for 2-minute testing), use it
-  if (process.env.CYCLE_DURATION_MINUTES) {
-    const mins = parseFloat(process.env.CYCLE_DURATION_MINUTES);
-    if (!isNaN(mins) && mins > 0) {
-      return Math.round(mins * 60 * 1000);
-    }
-  }
-
-  if (process.env.CYCLE_DURATION_MS) {
-    const ms = parseInt(process.env.CYCLE_DURATION_MS, 10);
-    if (!isNaN(ms) && ms > 0) {
-      return ms;
-    }
-  }
-
-  // Default to 7 days (604,800,000 ms)
+  // 7 days — fixed, no override
   return 7 * 24 * 60 * 60 * 1000;
 }
+
 
 /**
  * Checks whether the environment is currently running in Development/Test Accelerated Mode
