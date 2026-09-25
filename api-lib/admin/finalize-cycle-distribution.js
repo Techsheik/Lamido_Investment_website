@@ -84,11 +84,11 @@ export default async function handler(req, res) {
     // 5. Get eligible investments — ONLY from this cycle's locked entry
     //    These are the investments approved BEFORE the cycle started.
     //    We use start_date to identify them — they have start_date = cycle_start_at.
-    const { data: eligibleInvestments, error: invFetchErr } = await supabaseAdmin
+    const { data: rawInvestments, error: invFetchErr } = await supabaseAdmin
       .from("investments")
       .select(`
         *,
-        profiles:user_id(id, name, email, user_code, balance, total_roi)
+        profiles:user_id(id, name, email, user_code, balance, total_roi, is_test_account)
       `)
       .eq("entry_id", targetCycle.entry_id)
       .in("status", ["active", "completed"])
@@ -96,9 +96,19 @@ export default async function handler(req, res) {
 
     if (invFetchErr) throw invFetchErr;
 
+    // Exclude test accounts — they must NOT receive profit distributions
+    const eligibleInvestments = (rawInvestments || []).filter(
+      inv => !inv.profiles?.is_test_account
+    );
+
+    const skippedCount = (rawInvestments || []).length - eligibleInvestments.length;
+    if (skippedCount > 0) {
+      console.log(`[finalize-distribution] Skipping ${skippedCount} test account investment(s) — they are excluded from profit distribution.`);
+    }
+
     if (!eligibleInvestments || eligibleInvestments.length === 0) {
       return res.status(400).json({
-        error: "Cannot finalize: no eligible investments found for this cycle."
+        error: "Cannot finalize: no eligible investments found for this cycle (test accounts are excluded)."
       });
     }
 

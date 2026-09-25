@@ -11,9 +11,20 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save, Download, Check, X } from "lucide-react";
+import { ArrowLeft, Save, Download, Check, X, FlaskConical, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const AdminUserDetail = () => {
   const { userId } = useParams();
@@ -162,6 +173,69 @@ const AdminUserDetail = () => {
     },
   });
 
+  // Toggle test account flag (without clearing data)
+  const toggleTestFlagMutation = useMutation({
+    mutationFn: async (isTest: boolean) => {
+      const response = await fetch("/api/admin/update-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId, is_test_account: isTest }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to update test flag");
+      }
+      return response.json();
+    },
+    onSuccess: (_, isTest) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({
+        title: isTest ? "✅ Marked as Test Account" : "✅ Test Flag Removed",
+        description: isTest
+          ? "This account will be excluded from all cycle distributions."
+          : "This account will now be included in cycle distributions.",
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Clear all financial data for test account
+  const clearTestAccountMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not authenticated");
+
+      const response = await fetch("/api/admin/clear-test-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to clear test account");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-user-detail", userId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({
+        title: "🧹 Account Cleared",
+        description: data.message || "Test account data cleared successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <AdminLayout>
@@ -192,6 +266,12 @@ const AdminUserDetail = () => {
               {user?.user_code && (
                 <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-mono text-sm px-3 py-1">
                   {user.user_code}
+                </Badge>
+              )}
+              {user?.is_test_account && (
+                <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 gap-1">
+                  <FlaskConical className="h-3 w-3" />
+                  Test Account
                 </Badge>
               )}
             </div>
@@ -366,6 +446,79 @@ const AdminUserDetail = () => {
                   <Save className="h-4 w-4 mr-2" />
                   Save All Changes
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Test Account Controls */}
+            <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
+                  <FlaskConical className="h-5 w-5" />
+                  Test Account Controls
+                </CardTitle>
+                <CardDescription>
+                  Mark this account as a test account to exclude it from cycle profit distributions. Admin access is not affected.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant={user?.is_test_account ? "outline" : "secondary"}
+                    className={user?.is_test_account ? "border-green-500 text-green-700" : "border-amber-400 text-amber-700"}
+                    onClick={() => toggleTestFlagMutation.mutate(!user?.is_test_account)}
+                    disabled={toggleTestFlagMutation.isPending}
+                  >
+                    <FlaskConical className="h-4 w-4 mr-2" />
+                    {user?.is_test_account ? "Remove Test Account Flag" : "Mark as Test Account"}
+                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        disabled={clearTestAccountMutation.isPending}
+                        className="gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Clear Account Data
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Clear Test Account Data?</AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-2">
+                          <p>This will <strong>permanently zero out</strong> all financial data for <strong>{user?.name}</strong> ({user?.user_code}):</p>
+                          <ul className="list-disc ml-4 text-sm space-y-1">
+                            <li>Balance → $0</li>
+                            <li>Accrued Return → $0</li>
+                            <li>Total ROI → $0</li>
+                            <li>All investments → cancelled</li>
+                            <li>All pending transactions → rejected</li>
+                            <li>Marked as test account (excluded from distributions)</li>
+                          </ul>
+                          <p className="text-orange-600 dark:text-orange-400 font-medium mt-2">
+                            ⚠️ Admin access and profile info are NOT touched.
+                          </p>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => clearTestAccountMutation.mutate()}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Yes, Clear Everything
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+
+                {user?.is_test_account && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 rounded-md px-3 py-2">
+                    🧪 This account is flagged as a test account and will be <strong>excluded from all cycle distributions</strong>.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -40,7 +40,8 @@ export default async function handler(req, res) {
       "name", "email", "phone", "balance", "total_roi", "roi_percentage",
       "weekly_roi_percentage", "account_status", "first_name", "middle_name",
       "surname", "country", "state", "lga", "profile_pic", "bank_name",
-      "account_number", "account_holder_name", "accrued_return", "total_invested"
+      "account_number", "account_holder_name", "accrued_return", "total_invested",
+      "is_test_account"
     ];
 
     const cleanedData = {};

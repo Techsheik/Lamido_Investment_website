@@ -63,7 +63,7 @@ export default async function handler(req, res) {
       .from("investments")
       .select(`
         *,
-        profiles:user_id(id, name, email, user_code, balance)
+        profiles:user_id(id, name, email, user_code, balance, is_test_account)
       `)
       .eq("entry_id", targetCycle.entry_id)
       .in("status", ["active", "completed"])
@@ -71,7 +71,15 @@ export default async function handler(req, res) {
 
     if (invFetchErr) throw invFetchErr;
 
-    const eligible = eligibleInvestments || [];
+    // Exclude test accounts from distributions
+    const eligible = (eligibleInvestments || []).filter(
+      inv => !inv.profiles?.is_test_account
+    );
+
+    const skippedTestAccounts = (eligibleInvestments || []).length - eligible.length;
+    if (skippedTestAccounts > 0) {
+      console.log(`[calculate-distribution] Skipping ${skippedTestAccounts} test account investment(s) from cycle distribution`);
+    }
     const totalEligibleUnits = eligible.reduce(
       (sum, inv) => sum + (Number(inv.units) || 1), 0
     );

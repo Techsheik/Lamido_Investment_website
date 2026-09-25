@@ -45,6 +45,7 @@ import submitPaymentProofHandler from "./api-lib/submit-payment-proof.js";
 import updateProfileHandler from "./api-lib/update-profile.js";
 import approveWithdrawalHandler from "./api-lib/admin/approve-withdrawal.js";
 import confirmWithdrawalPaidHandler from "./api-lib/admin/confirm-withdrawal-paid.js";
+import clearTestAccountHandler from "./api-lib/admin/clear-test-account.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,6 +132,8 @@ try {
   app.get("/api/admin/approve-withdrawal", approveWithdrawalHandler);
   // Admin dashboard: confirm manual payment was made (deducts balance)
   app.post("/api/admin/confirm-withdrawal-paid", confirmWithdrawalPaidHandler);
+  // Clear test account data (zero balances, cancel investments, exclude from distributions)
+  app.post("/api/admin/clear-test-account", clearTestAccountHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -197,6 +200,7 @@ try {
           "/api/submit-payment-proof": submitPaymentProofHandler,
           "/api/update-profile": updateProfileHandler,
           "/api/admin/confirm-withdrawal-paid": confirmWithdrawalPaidHandler,
+          "/api/admin/clear-test-account": clearTestAccountHandler,
         },
         "PUT": {
           "/api/admin/announcements": announcementsHandler,
