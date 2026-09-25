@@ -18,12 +18,13 @@ export default async function handler(req, res) {
 
     const { status, type, date } = req.query;
 
+    // NOTE: virtual_accounts join removed — FK not reliably recognised by PostgREST
+    // which was causing the entire query to fail silently and return nothing.
     let query = supabaseAdmin
       .from("transactions")
       .select(`
         *,
-        profiles:user_id(name, user_code, balance, email),
-        virtual_accounts(account_number, bank_name)
+        profiles:user_id(name, user_code, balance, email)
       `);
 
     if (status && status !== "all") {
@@ -43,11 +44,15 @@ export default async function handler(req, res) {
 
     const { data, error } = await query.order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error("[get-transactions] Supabase error:", JSON.stringify(error));
+      throw error;
+    }
 
+    console.log(`[get-transactions] Returning ${(data || []).length} transactions`);
     res.status(200).json(data || []);
   } catch (err) {
-    console.error("Error fetching transactions:", err);
+    console.error("[get-transactions] Error:", err.message || err);
     res.status(500).json({ error: err.message });
   }
 }
