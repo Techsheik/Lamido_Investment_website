@@ -10,9 +10,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Filter, Search } from "lucide-react";
+import { Check, X, Filter, Search, Banknote } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const AdminTransactions = () => {
   const { toast } = useToast();
@@ -78,29 +89,65 @@ const AdminTransactions = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to update transaction");
       }
+
+      return response.json();
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       queryClient.invalidateQueries({ queryKey: ["investments"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
-      const message = variables.status === "approved" 
-        ? variables.transaction.type === "withdrawal"
-          ? "Withdrawal approved and balance deducted"
-          : "Transaction approved successfully"
-        : "Transaction rejected";
+
+      let message: string;
+      if (variables.status === "approved" && variables.transaction.type === "withdrawal") {
+        message = "Withdrawal approved. Now transfer the funds manually, then click \"Confirm Paid\" to deduct the balance.";
+      } else if (variables.status === "approved") {
+        message = "Transaction approved successfully";
+      } else {
+        message = "Transaction rejected";
+      }
+      toast({ title: "Success", description: message });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Step 2: Admin confirms they have physically paid the user → triggers balance deduction
+  const confirmPaid = useMutation({
+    mutationFn: async (transactionId: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not authenticated. Please sign in again.");
+
+      const response = await fetch("/api/admin/confirm-withdrawal-paid", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transactionId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to confirm payment");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       toast({
-        title: "Success",
-        description: message,
+        title: "✅ Payment Confirmed",
+        description: data.message || "User's balance has been deducted successfully.",
       });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -243,34 +290,81 @@ const AdminTransactions = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {(transaction.status === "pending" || transaction.status === "failed") && (
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => updateStatus.mutate({ 
-                              id: transaction.id, 
-                              status: "approved",
-                              transaction 
-                            })}
-                            disabled={updateStatus.isPending}
-                          >
-                            <Check className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => updateStatus.mutate({ 
-                              id: transaction.id, 
-                              status: "rejected",
-                              transaction 
-                            })}
-                            disabled={updateStatus.isPending}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-2">
+                        {/* Step 1: Approve (pending → approved) — for ANY pending transaction */}
+                        {(transaction.status === "pending" || transaction.status === "failed") && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => updateStatus.mutate({ 
+                                id: transaction.id, 
+                                status: "approved",
+                                transaction 
+                              })}
+                              disabled={updateStatus.isPending || confirmPaid.isPending}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => updateStatus.mutate({ 
+                                id: transaction.id, 
+                                status: "rejected",
+                                transaction 
+                              })}
+                              disabled={updateStatus.isPending || confirmPaid.isPending}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Step 2: Confirm Paid — only for approved WITHDRAWALS */}
+                        {transaction.status === "approved" && transaction.type === "withdrawal" && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950 gap-1 font-semibold"
+                                disabled={confirmPaid.isPending}
+                              >
+                                <Banknote className="w-4 h-4" />
+                                Confirm Paid
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Confirm Payment Made?</AlertDialogTitle>
+                                <AlertDialogDescription className="space-y-2">
+                                  <p>
+                                    You are about to confirm that you have <strong>manually transferred</strong> the following withdrawal to the investor:
+                                  </p>
+                                  <div className="rounded-lg border p-3 bg-muted text-sm space-y-1">
+                                    <p><span className="font-medium">Investor:</span> {transaction.profile?.name || "Unknown"}</p>
+                                    <p><span className="font-medium">Amount:</span> ${Number(transaction.amount).toFixed(2)}</p>
+                                    <p><span className="font-medium">Reference:</span> {transaction.reference || "N/A"}</p>
+                                  </div>
+                                  <p className="text-orange-600 dark:text-orange-400 font-medium">
+                                    ⚠️ This will permanently deduct ${Number(transaction.amount).toFixed(2)} from the investor's account balance. This cannot be undone.
+                                  </p>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => confirmPaid.mutate(transaction.id)}
+                                  className="bg-green-600 hover:bg-green-700"
+                                >
+                                  Yes, I've Paid — Deduct Balance
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

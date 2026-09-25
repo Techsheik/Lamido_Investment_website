@@ -33,6 +33,7 @@ import submitReinvestmentHandler from "../api-lib/submit-reinvestment.js";
 import submitPaymentProofHandler from "../api-lib/submit-payment-proof.js";
 import updateProfileHandler from "../api-lib/update-profile.js";
 import approveWithdrawalHandler from "../api-lib/admin/approve-withdrawal.js";
+import confirmWithdrawalPaidHandler from "../api-lib/admin/confirm-withdrawal-paid.js";
 
 const routes = {
   "GET": {
@@ -75,6 +76,7 @@ const routes = {
     "/api/submit-reinvestment": submitReinvestmentHandler,
     "/api/submit-payment-proof": submitPaymentProofHandler,
     "/api/update-profile": updateProfileHandler,
+    "/api/admin/confirm-withdrawal-paid": confirmWithdrawalPaidHandler,
   },
   "PUT": {
     "/api/admin/announcements": announcementsHandler,

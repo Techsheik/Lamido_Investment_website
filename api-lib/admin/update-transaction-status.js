@@ -36,15 +36,50 @@ export default async function handler(req, res) {
     }
 
     // Idempotency: already in target state
-    if (existingTx.status === "completed" && status === "approved") {
-      return res.status(200).json({ ok: true, message: "Transaction already completed", transaction: existingTx });
+    if ((existingTx.status === "completed" || existingTx.status === "approved") && status === "approved") {
+      return res.status(200).json({ ok: true, message: "Transaction already approved or completed", transaction: existingTx });
     }
 
-    // 2. Update transaction status
+    const targetUserId = existingTx.user_id || userId;
+    // SECURITY: Always use DB amount, never the client-supplied amount
+    const dbAmount = Number(existingTx.amount || 0);
+    const txType = existingTx.type || type;
+
+    // ── WITHDRAWAL APPROVAL ──────────────────────────────────────────────────────
+    // For withdrawals, "approve" only marks the transaction as "approved".
+    // The balance deduction happens ONLY after the admin confirms payment via
+    // POST /api/admin/confirm-withdrawal-paid — a deliberate two-step process
+    // to prevent deducting before the admin has actually transferred the funds.
+    if (status === "approved" && txType === "withdrawal") {
+      const { data: transaction, error: transError } = await supabaseAdmin
+        .from("transactions")
+        .update({
+          status: "approved",
+          approved_at: new Date().toISOString(),
+          approved_by: adminUserId
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (transError) throw transError;
+
+      console.log(`[update-transaction-status] Admin ${adminUserId} APPROVED withdrawal tx ${id} (payment pending)`);
+      return res.status(200).json({
+        ok: true,
+        transaction,
+        message: "Withdrawal approved. Please manually transfer the funds, then click \"Confirm Paid\" to deduct the balance."
+      });
+    }
+
+    // ── DEPOSIT APPROVAL ─────────────────────────────────────────────────────────
+    // For deposits, "approve" = "completed" + credit balance immediately.
+    const newStatus = status === "approved" ? "completed" : status;
+
     const { data: transaction, error: transError } = await supabaseAdmin
       .from("transactions")
       .update({
-        status: status === "approved" ? "completed" : status,
+        status: newStatus,
         approved_at: new Date().toISOString(),
         approved_by: adminUserId
       })
@@ -54,76 +89,37 @@ export default async function handler(req, res) {
 
     if (transError) throw transError;
 
-    const targetUserId = existingTx.user_id || userId;
-    // SECURITY: Always use DB amount, never the client-supplied amount
-    const dbAmount = Number(existingTx.amount || 0);
-    const txType = existingTx.type || type;
+    // Credit balance for approved deposits
+    if (status === "approved" && txType === "deposit" && targetUserId) {
+      const { data: prof } = await supabaseAdmin
+        .from("profiles")
+        .select("balance")
+        .eq("id", targetUserId)
+        .maybeSingle();
 
-    // 3. Logic for approved transactions
-    if (status === "approved" && targetUserId) {
-      if (txType === "deposit") {
-        // Fetch current balance from DB
-        const { data: prof } = await supabaseAdmin
-          .from("profiles")
-          .select("balance")
-          .eq("id", targetUserId)
-          .maybeSingle();
+      const newBalance = Number(prof?.balance || 0) + dbAmount;
+      const { error: balanceError } = await supabaseAdmin
+        .from("profiles")
+        .update({ balance: Math.round(newBalance * 100) / 100 })
+        .eq("id", targetUserId);
 
-        const newBalance = Number(prof?.balance || 0) + dbAmount;
-        const { error: balanceError } = await supabaseAdmin
-          .from("profiles")
-          .update({ balance: Math.round(newBalance * 100) / 100 })
-          .eq("id", targetUserId);
+      if (balanceError) throw balanceError;
 
-        if (balanceError) throw balanceError;
-
-        // Activate pending investment
-        const now = new Date();
-        const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
-
-        await supabaseAdmin
-          .from("investments")
-          .update({
-            status: "active",
-            start_date: now.toISOString(),
-            end_date: endDate.toISOString(),
-          })
-          .eq("user_id", targetUserId)
-          .eq("status", "pending");
-
-      } else if (txType === "withdrawal") {
-        // Deduct approved withdrawal amount — use DB amount only
-        const { data: uProf } = await supabaseAdmin
-          .from("profiles")
-          .select("balance, accrued_return")
-          .eq("id", targetUserId)
-          .single();
-
-        let curBal = Number(uProf?.balance || 0);
-        let curAccrued = Number(uProf?.accrued_return || 0);
-        let toDeduct = dbAmount;
-
-        if (curBal >= toDeduct) {
-          curBal -= toDeduct;
-          toDeduct = 0;
-        } else {
-          toDeduct -= curBal;
-          curBal = 0;
-          curAccrued = Math.max(0, curAccrued - toDeduct);
-        }
-
-        await supabaseAdmin
-          .from("profiles")
-          .update({
-            balance: Math.round(curBal * 100) / 100,
-            accrued_return: Math.round(curAccrued * 100) / 100,
-            last_withdrawal_date: new Date().toISOString()
-          })
-          .eq("id", targetUserId);
-      }
+      // Activate any pending investments for this user
+      const now = new Date();
+      const endDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+      await supabaseAdmin
+        .from("investments")
+        .update({
+          status: "active",
+          start_date: now.toISOString(),
+          end_date: endDate.toISOString(),
+        })
+        .eq("user_id", targetUserId)
+        .eq("status", "pending");
     }
 
-    console.log(`[update-transaction-status] Admin ${adminUserId} set tx ${id} → ${status}`);
+    console.log(`[update-transaction-status] Admin ${adminUserId} set tx ${id} → ${newStatus}`);
     res.status(200).json({ ok: true, transaction });
   } catch (err) {
     console.error("Error updating transaction:", err);

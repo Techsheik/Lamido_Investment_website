@@ -44,6 +44,7 @@ import submitReinvestmentHandler from "./api-lib/submit-reinvestment.js";
 import submitPaymentProofHandler from "./api-lib/submit-payment-proof.js";
 import updateProfileHandler from "./api-lib/update-profile.js";
 import approveWithdrawalHandler from "./api-lib/admin/approve-withdrawal.js";
+import confirmWithdrawalPaidHandler from "./api-lib/admin/confirm-withdrawal-paid.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -128,6 +129,8 @@ try {
   app.post("/api/update-profile", updateProfileHandler);
   // Admin email approval flow (GET — no admin login required, token-secured)
   app.get("/api/admin/approve-withdrawal", approveWithdrawalHandler);
+  // Admin dashboard: confirm manual payment was made (deducts balance)
+  app.post("/api/admin/confirm-withdrawal-paid", confirmWithdrawalPaidHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });
@@ -193,6 +196,7 @@ try {
           "/api/submit-reinvestment": submitReinvestmentHandler,
           "/api/submit-payment-proof": submitPaymentProofHandler,
           "/api/update-profile": updateProfileHandler,
+          "/api/admin/confirm-withdrawal-paid": confirmWithdrawalPaidHandler,
         },
         "PUT": {
           "/api/admin/announcements": announcementsHandler,
