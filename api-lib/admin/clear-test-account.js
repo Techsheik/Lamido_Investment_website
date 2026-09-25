@@ -99,13 +99,36 @@ export default async function handler(req, res) {
     }
 
     // 5. Reject all pending/approved financial transactions (deposits & withdrawals)
-    const { data: rejectedTxs, error: txErr } = await supabaseAdmin
+    let rejectedTxs, txErr;
+    // Try with approval metadata; retry without if columns are missing
+    const txRejectResult = await supabaseAdmin
       .from("transactions")
       .update({ status: "rejected", approved_at: nowIso, approved_by: adminUserId })
       .eq("user_id", userId)
       .in("status", ["pending", "approved"])
       .in("type", ["deposit", "withdrawal"])
       .select("id");
+
+    if (txRejectResult.error && (
+      txRejectResult.error.message?.includes("approved_at") ||
+      txRejectResult.error.message?.includes("approved_by") ||
+      txRejectResult.error.message?.includes("schema cache") ||
+      txRejectResult.error.message?.includes("column")
+    )) {
+      console.warn("[clear-test-account] Retrying transaction reject without approval metadata columns...");
+      const retry = await supabaseAdmin
+        .from("transactions")
+        .update({ status: "rejected" })
+        .eq("user_id", userId)
+        .in("status", ["pending", "approved"])
+        .in("type", ["deposit", "withdrawal"])
+        .select("id");
+      rejectedTxs = retry.data;
+      txErr = retry.error;
+    } else {
+      rejectedTxs = txRejectResult.data;
+      txErr = txRejectResult.error;
+    }
 
     if (txErr) {
       console.warn("[clear-test-account] Transaction reject warning:", txErr.message);

@@ -126,17 +126,39 @@ export default async function handler(req, res) {
     }
 
     // 9. Mark transaction as completed (only if still "approved" — prevents races)
-    const { data: updatedTx, error: txUpdateErr } = await supabaseAdmin
+    //    Try with approval metadata; if columns are missing, retry without them
+    let txUpdatePayload = {
+      status: "completed",
+      approved_at: nowIso,
+      approved_by: adminUserId,
+    };
+
+    let { data: updatedTx, error: txUpdateErr } = await supabaseAdmin
       .from("transactions")
-      .update({
-        status: "completed",
-        approved_at: nowIso,
-        approved_by: adminUserId,
-      })
+      .update(txUpdatePayload)
       .eq("id", transactionId)
-      .eq("status", "approved") // extra guard against race conditions
+      .eq("status", "approved")
       .select()
       .single();
+
+    // If approved_at/approved_by columns don't exist yet, retry with just status
+    if (txUpdateErr && (
+      txUpdateErr.message?.includes("approved_at") ||
+      txUpdateErr.message?.includes("approved_by") ||
+      txUpdateErr.message?.includes("schema cache") ||
+      txUpdateErr.message?.includes("column")
+    )) {
+      console.warn("[confirm-withdrawal-paid] Retrying without approval metadata columns...");
+      const retry = await supabaseAdmin
+        .from("transactions")
+        .update({ status: "completed" })
+        .eq("id", transactionId)
+        .eq("status", "approved")
+        .select()
+        .single();
+      updatedTx = retry.data;
+      txUpdateErr = retry.error;
+    }
 
     if (txUpdateErr) {
       console.error("[confirm-withdrawal-paid] Failed to mark tx completed:", txUpdateErr.message);

@@ -1,6 +1,31 @@
 import { createClient } from "@supabase/supabase-js";
 import { verifyAdmin } from "./auth-check.js";
 
+/**
+ * Helper: build a safe update payload.
+ * Tries to include approved_at / approved_by. If the DB throws a "column not found"
+ * error, the caller retries without those columns.
+ */
+function buildUpdatePayload(status, adminUserId, includeApprovalMeta = true) {
+  const payload = { status };
+  if (includeApprovalMeta) {
+    payload.approved_at = new Date().toISOString();
+    payload.approved_by = adminUserId;
+  }
+  return payload;
+}
+
+function isColumnMissingError(err) {
+  const msg = (err?.message || "").toLowerCase();
+  return (
+    msg.includes("approved_at") ||
+    msg.includes("approved_by") ||
+    msg.includes("schema cache") ||
+    msg.includes("column") ||
+    msg.includes("does not exist")
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -45,23 +70,42 @@ export default async function handler(req, res) {
     const dbAmount = Number(existingTx.amount || 0);
     const txType = existingTx.type || type;
 
-    // ── WITHDRAWAL APPROVAL ──────────────────────────────────────────────────────
-    // For withdrawals, "approve" only marks the transaction as "approved".
-    // The balance deduction happens ONLY after the admin confirms payment via
-    // POST /api/admin/confirm-withdrawal-paid — a deliberate two-step process
-    // to prevent deducting before the admin has actually transferred the funds.
-    if (status === "approved" && txType === "withdrawal") {
-      const { data: transaction, error: transError } = await supabaseAdmin
+    /**
+     * Safe update helper — tries with approval metadata first.
+     * If DB doesn't have approved_at/approved_by columns yet, retries without them.
+     */
+    async function safeUpdateTx(newStatus) {
+      // Try with metadata
+      let payload = buildUpdatePayload(newStatus, adminUserId, true);
+      let { data, error } = await supabaseAdmin
         .from("transactions")
-        .update({
-          status: "approved",
-          approved_at: new Date().toISOString(),
-          approved_by: adminUserId
-        })
+        .update(payload)
         .eq("id", id)
         .select()
         .single();
 
+      if (error && isColumnMissingError(error)) {
+        console.warn("[update-transaction-status] approved_at/approved_by columns missing, retrying without them...");
+        payload = buildUpdatePayload(newStatus, adminUserId, false);
+        const retry = await supabaseAdmin
+          .from("transactions")
+          .update(payload)
+          .eq("id", id)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      return { data, error };
+    }
+
+    // ── WITHDRAWAL APPROVAL ──────────────────────────────────────────────────────
+    // For withdrawals, "approve" only marks the transaction as "approved".
+    // Balance deduction happens ONLY after admin confirms payment via
+    // POST /api/admin/confirm-withdrawal-paid — deliberate two-step process.
+    if (status === "approved" && txType === "withdrawal") {
+      const { data: transaction, error: transError } = await safeUpdateTx("approved");
       if (transError) throw transError;
 
       console.log(`[update-transaction-status] Admin ${adminUserId} APPROVED withdrawal tx ${id} (payment pending)`);
@@ -72,21 +116,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── DEPOSIT APPROVAL ─────────────────────────────────────────────────────────
+    // ── DEPOSIT APPROVAL / REJECTION ─────────────────────────────────────────────
     // For deposits, "approve" = "completed" + credit balance immediately.
     const newStatus = status === "approved" ? "completed" : status;
 
-    const { data: transaction, error: transError } = await supabaseAdmin
-      .from("transactions")
-      .update({
-        status: newStatus,
-        approved_at: new Date().toISOString(),
-        approved_by: adminUserId
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
+    const { data: transaction, error: transError } = await safeUpdateTx(newStatus);
     if (transError) throw transError;
 
     // Credit balance for approved deposits
@@ -126,4 +160,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
-
