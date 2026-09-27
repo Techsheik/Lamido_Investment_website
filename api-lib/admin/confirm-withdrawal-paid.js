@@ -1,22 +1,20 @@
 /**
  * POST /api/admin/confirm-withdrawal-paid
  *
- * Step 2 of the manual withdrawal flow.
+ * Admin confirms they have physically transferred funds to the investor's bank.
+ * This endpoint:
+ *  1. Reads the withdrawal amount from the DB (never trusts client payload)
+ *  2. Deducts the amount from the user's balance
+ *  3. Marks the transaction as "completed"
  *
- * Flow:
- *  1. Admin approves a pending withdrawal request → transaction status → "approved"
- *     (balance is NOT deducted yet; admin must manually transfer funds)
- *  2. Admin physically transfers the funds to the investor's bank account
- *  3. Admin clicks "Confirm Paid" in the dashboard → this endpoint is called
- *  4. System deducts the withdrawal amount from the user's balance
- *  5. Transaction is marked "completed"
- *  6. User receives an in-app notification
+ * Accepts transactions in EITHER "pending" OR "approved" state —
+ * so admin can confirm payment in one step if they skipped the intermediate
+ * "approve" button (e.g., old pending transactions from before the two-step flow).
  *
  * Security:
- *  - Caller must be a verified admin (JWT checked)
- *  - Amount is always read from DB — never trusted from client payload
- *  - Idempotent: repeated calls on an already-completed transaction return success
- *  - Only transactions with status "approved" can be confirmed
+ *  - Admin JWT required (verifyAdmin)
+ *  - Amount always read from DB — never from client
+ *  - Idempotent: repeated calls on already-completed tx return success without double-deduct
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -72,17 +70,27 @@ export default async function handler(req, res) {
       });
     }
 
-    // 5. Guard: must be in "approved" state (not still pending, not rejected)
-    if (tx.status !== "approved") {
+    // 5. Guard: only pending or approved withdrawals can be confirmed
+    //    (rejected ones cannot be confirmed — they were cancelled)
+    if (tx.status === "rejected") {
       return res.status(409).json({
-        error: `Cannot confirm payment: transaction status is "${tx.status}". Only "approved" withdrawals can be confirmed as paid.`,
+        error: `Cannot confirm payment: this withdrawal was rejected/cancelled.`,
+      });
+    }
+
+    // Allow both "pending" and "approved" — admin may confirm in one step
+    if (tx.status !== "pending" && tx.status !== "approved") {
+      return res.status(409).json({
+        error: `Cannot confirm payment: unexpected status "${tx.status}".`,
       });
     }
 
     const targetUserId = tx.user_id;
-    // SECURITY: Always use DB amount
+    // SECURITY: Always use DB amount — never the client-supplied value
     const dbAmount = Number(tx.amount);
     const nowIso = new Date().toISOString();
+
+    console.log(`[confirm-withdrawal-paid] Processing $${dbAmount} withdrawal for user ${targetUserId} (tx: ${transactionId}, status was: ${tx.status})`);
 
     // 6. Fetch current user balances
     const { data: uProf, error: profErr } = await supabaseAdmin
@@ -109,12 +117,15 @@ export default async function handler(req, res) {
       curAccrued = Math.max(0, curAccrued - toDeduct);
     }
 
+    const newBalance = Math.round(curBal * 100) / 100;
+    const newAccrued = Math.round(curAccrued * 100) / 100;
+
     // 8. Deduct balance from profile
     const { error: updateProfErr } = await supabaseAdmin
       .from("profiles")
       .update({
-        balance: Math.round(curBal * 100) / 100,
-        accrued_return: Math.round(curAccrued * 100) / 100,
+        balance: newBalance,
+        accrued_return: newAccrued,
         last_withdrawal_date: nowIso,
         updated_at: nowIso,
       })
@@ -125,8 +136,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Failed to deduct balance. Please try again." });
     }
 
-    // 9. Mark transaction as completed (only if still "approved" — prevents races)
-    //    Try with approval metadata; if columns are missing, retry without them
+    console.log(`[confirm-withdrawal-paid] Balance deducted: $${dbAmount} from user ${targetUserId}. New balance: $${newBalance}`);
+
+    // 9. Mark transaction as completed
+    //    NOTE: We do NOT guard with .eq("status", "approved") here —
+    //    the transaction could be "pending" if admin skipped the approve step.
+    //    We already fetched & validated the status above (steps 4–5).
     let txUpdatePayload = {
       status: "completed",
       approved_at: nowIso,
@@ -137,7 +152,6 @@ export default async function handler(req, res) {
       .from("transactions")
       .update(txUpdatePayload)
       .eq("id", transactionId)
-      .eq("status", "approved")
       .select()
       .single();
 
@@ -146,14 +160,14 @@ export default async function handler(req, res) {
       txUpdateErr.message?.includes("approved_at") ||
       txUpdateErr.message?.includes("approved_by") ||
       txUpdateErr.message?.includes("schema cache") ||
-      txUpdateErr.message?.includes("column")
+      txUpdateErr.message?.includes("column") ||
+      txUpdateErr.message?.includes("does not exist")
     )) {
       console.warn("[confirm-withdrawal-paid] Retrying without approval metadata columns...");
       const retry = await supabaseAdmin
         .from("transactions")
         .update({ status: "completed" })
         .eq("id", transactionId)
-        .eq("status", "approved")
         .select()
         .single();
       updatedTx = retry.data;
@@ -162,8 +176,9 @@ export default async function handler(req, res) {
 
     if (txUpdateErr) {
       console.error("[confirm-withdrawal-paid] Failed to mark tx completed:", txUpdateErr.message);
+      // Balance was already deducted — don't roll back, just warn admin
       return res.status(500).json({
-        error: "Balance was deducted but transaction status could not be updated. Please check Admin Portal.",
+        error: `Balance was deducted ($${dbAmount.toFixed(2)}) but transaction status could not be updated to "completed". Please manually update the transaction status in Supabase.`,
       });
     }
 
