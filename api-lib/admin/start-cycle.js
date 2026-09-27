@@ -190,18 +190,35 @@ export default async function handler(req, res) {
             const investmentAmount = units * MIN_UNIT_COST;
 
             // Create a new investment record for them in this cycle's entry
-            const { error: carryErr } = await supabaseAdmin
+            // Tag as carry_forward so the UI can badge them separately
+            let insertPayload = {
+              user_id: userId,
+              amount: investmentAmount,
+              units: units,
+              status: "active",
+              entry_id: entryId,
+              start_date: nowIso,
+              end_date: endIso,
+              created_at: nowIso,
+              is_carry_forward: true,
+            };
+
+            let { error: carryErr } = await supabaseAdmin
               .from("investments")
-              .insert({
-                user_id: userId,
-                amount: investmentAmount,
-                units: units,
-                status: "active",
-                entry_id: entryId,
-                start_date: nowIso,
-                end_date: endIso,
-                created_at: nowIso,
-              });
+              .insert(insertPayload);
+
+            // If is_carry_forward column doesn't exist yet (migration not run), retry without it
+            if (carryErr && (
+              carryErr.message?.includes("is_carry_forward") ||
+              carryErr.message?.includes("schema cache") ||
+              carryErr.message?.includes("column")
+            )) {
+              console.warn("[start-cycle] is_carry_forward column missing, retrying without it...");
+              const { error: retryErr } = await supabaseAdmin
+                .from("investments")
+                .insert({ ...insertPayload, is_carry_forward: undefined });
+              carryErr = retryErr;
+            }
 
             if (!carryErr) {
               carryForwardCount++;

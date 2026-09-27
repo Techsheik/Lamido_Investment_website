@@ -50,6 +50,7 @@ export function AdminCycleManagement() {
   const [previewData, setPreviewData] = useState<any>(null);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [showStartCycleModal, setShowStartCycleModal] = useState(false);
+  const [showCancelCycleModal, setShowCancelCycleModal] = useState(false);
   const [selectedHistoricalCycle, setSelectedHistoricalCycle] = useState<any>(null);
   const [carryForwardPreview, setCarryForwardPreview] = useState<any[]>([]);
   const [loadingCarryForward, setLoadingCarryForward] = useState(false);
@@ -187,6 +188,21 @@ export function AdminCycleManagement() {
       refetch();
     },
     onError: (e: Error) => toast({ title: "Finalization Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelCycleMutation = useMutation({
+    mutationFn: () => adminFetch("/api/admin/cancel-cycle", { method: "POST" }),
+    onSuccess: (data) => {
+      toast({ title: "❌ Cycle Cancelled", description: data.message });
+      setShowCancelCycleModal(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-cycles"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
+      refetch();
+    },
+    onError: (e: Error) => {
+      setShowCancelCycleModal(false);
+      toast({ title: "Cancel Failed", description: e.message, variant: "destructive" });
+    },
   });
 
   // ── Status badge helpers ─────────────────────────────────────────────────────
@@ -361,6 +377,18 @@ export function AdminCycleManagement() {
               </Button>
             )}
 
+            {/* Cancel cycle — shown whenever a cycle is active (not yet finalized) */}
+            {activeCycle && !(["FINALIZED", "NO_CYCLE"].includes(activeCycle.status)) && (
+              <Button
+                onClick={() => setShowCancelCycleModal(true)}
+                variant="outline"
+                className="border-red-500/50 text-red-600 hover:bg-red-500/10 gap-2"
+              >
+                <X className="w-4 h-4" />
+                Cancel Cycle
+              </Button>
+            )}
+
             {systemState?.canStartCycle && approvedInvestments.length === 0 && (
               <div className="flex items-center gap-2 text-sm text-amber-600 p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
                 <AlertTriangle className="w-4 h-4" />
@@ -488,9 +516,15 @@ export function AdminCycleManagement() {
                           <TableCell className="text-center font-bold font-mono">{inv.units}</TableCell>
                           <TableCell className="text-right font-mono">${Number(inv.amount).toLocaleString()}</TableCell>
                           <TableCell>
-                            <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 text-[10px]">
-                              APPROVED — WAITING
-                            </Badge>
+                            {inv.is_carry_forward ? (
+                              <Badge className="bg-amber-500/10 text-amber-600 border border-amber-500/30 text-[10px]">
+                                🔄 CARRY FORWARD
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-blue-500/10 text-blue-600 border border-blue-500/30 text-[10px]">
+                                ✅ NEW INVESTOR
+                              </Badge>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -924,6 +958,61 @@ export function AdminCycleManagement() {
               </TableBody>
             </Table>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* CANCEL CYCLE DIALOG */}
+      <Dialog open={showCancelCycleModal} onOpenChange={setShowCancelCycleModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <X className="w-5 h-5" /> Cancel {activeCycle?.name || "Current"} Cycle
+            </DialogTitle>
+            <DialogDescription>
+              This will stop the cycle and revert all investors back to the approval queue.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="p-4 bg-red-500/5 rounded-lg border border-red-500/20 space-y-2 text-sm">
+              <p className="font-semibold text-red-600">What will happen:</p>
+              <ul className="space-y-1 text-muted-foreground text-xs list-disc pl-4">
+                <li>All <strong>active investments</strong> revert to <strong>"Approved — Awaiting Cycle Start"</strong></li>
+                <li>Carry-forward investors keep their <strong>🔄 CARRY FORWARD</strong> tag</li>
+                <li>Cycle timestamps are cleared — you can start fresh</li>
+                <li>No balances are changed (nothing was paid out yet)</li>
+              </ul>
+            </div>
+
+            {activeCycle && (
+              <div className="p-3 bg-muted rounded-lg border font-mono text-sm">
+                <div className="flex justify-between">
+                  <span>Cycle:</span>
+                  <span className="font-bold">{activeCycle.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Current status:</span>
+                  <span className="font-bold text-amber-500">{activeCycle.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Investors to revert:</span>
+                  <span className="font-bold">{eligibleInvestments.length || approvedInvestments.length}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelCycleModal(false)}>
+              Keep Cycle Running
+            </Button>
+            <Button
+              onClick={() => cancelCycleMutation.mutate()}
+              disabled={cancelCycleMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {cancelCycleMutation.isPending ? "Cancelling..." : "Yes, Cancel Cycle"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
