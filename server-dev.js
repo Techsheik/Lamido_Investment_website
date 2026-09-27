@@ -46,6 +46,7 @@ import updateProfileHandler from "./api-lib/update-profile.js";
 import approveWithdrawalHandler from "./api-lib/admin/approve-withdrawal.js";
 import confirmWithdrawalPaidHandler from "./api-lib/admin/confirm-withdrawal-paid.js";
 import clearTestAccountHandler from "./api-lib/admin/clear-test-account.js";
+import getCarryForwardPreviewHandler from "./api-lib/admin/get-carry-forward-preview.js";
 
 // Load .env file manually (Node.js doesn't auto-load it)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,8 @@ try {
   app.post("/api/admin/confirm-withdrawal-paid", confirmWithdrawalPaidHandler);
   // Clear test account data (zero balances, cancel investments, exclude from distributions)
   app.post("/api/admin/clear-test-account", clearTestAccountHandler);
+  // Preview which investors will be auto-carried-forward in the next cycle
+  app.get("/api/admin/get-carry-forward-preview", getCarryForwardPreviewHandler);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", api: "available", server: "express" });

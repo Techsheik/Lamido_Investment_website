@@ -51,6 +51,8 @@ export function AdminCycleManagement() {
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [showStartCycleModal, setShowStartCycleModal] = useState(false);
   const [selectedHistoricalCycle, setSelectedHistoricalCycle] = useState<any>(null);
+  const [carryForwardPreview, setCarryForwardPreview] = useState<any[]>([]);
+  const [loadingCarryForward, setLoadingCarryForward] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────────────
   const { data: cycleData, isLoading, refetch } = useQuery({
@@ -128,6 +130,7 @@ export function AdminCycleManagement() {
     onSuccess: (data) => {
       toast({ title: "🚀 Cycle Started!", description: data.message });
       setShowStartCycleModal(false);
+      setCarryForwardPreview([]);
       queryClient.invalidateQueries({ queryKey: ["admin-cycles"] });
       queryClient.invalidateQueries({ queryKey: ["admin-investments"] });
       refetch();
@@ -137,6 +140,24 @@ export function AdminCycleManagement() {
       toast({ title: "Error Starting Cycle", description: e.message, variant: "destructive" });
     },
   });
+
+  // Fetch carry-forward candidates to preview in the confirmation dialog
+  const openStartCycleModal = async () => {
+    setShowStartCycleModal(true);
+    setCarryForwardPreview([]);
+    setLoadingCarryForward(true);
+    try {
+      const res = await fetch("/api/admin/get-carry-forward-preview");
+      if (res.ok) {
+        const data = await res.json();
+        setCarryForwardPreview(data.candidates || []);
+      }
+    } catch (_) {
+      // Non-critical — preview fails silently
+    } finally {
+      setLoadingCarryForward(false);
+    }
+  };
 
   const calculateMutation = useMutation({
     mutationFn: async (profit: number) => adminFetch("/api/admin/calculate-cycle-distribution", {
@@ -332,7 +353,7 @@ export function AdminCycleManagement() {
 
             {systemState?.canStartCycle && approvedInvestments.length > 0 && (
               <Button
-                onClick={() => setShowStartCycleModal(true)}
+                onClick={openStartCycleModal}
                 className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-lg shadow-blue-600/20"
               >
                 <Play className="w-4 h-4" />
@@ -724,33 +745,73 @@ export function AdminCycleManagement() {
 
       {/* START CYCLE CONFIRMATION DIALOG */}
       <Dialog open={showStartCycleModal} onOpenChange={setShowStartCycleModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-blue-600">
               <Play className="w-5 h-5" /> Start {activeCycle?.name || "Next"} Cycle
             </DialogTitle>
             <DialogDescription>
-              This will start the 7-day investment clock for all {approvedInvestments.length} approved investment(s).
+              Review all investors that will be included in this cycle before confirming.
             </DialogDescription>
           </DialogHeader>
-          <div className="p-4 bg-muted rounded-lg space-y-2 text-sm font-mono border">
-            <div className="flex justify-between">
-              <span>Approved Investments:</span>
-              <span className="font-bold">{approvedInvestments.length}</span>
+
+          <div className="space-y-3">
+            {/* Approved investors (manually enrolled this entry) */}
+            <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-blue-600">✅ New Approved Investors</span>
+                <span className="font-bold font-mono text-blue-600">{approvedInvestments.length}</span>
+              </div>
+              {approvedInvestments.map((inv: any) => (
+                <div key={inv.id} className="flex justify-between text-xs text-muted-foreground pl-2 border-l-2 border-blue-500/30">
+                  <span className="font-medium">{inv.user_name} <span className="font-mono text-blue-500">{inv.user_code}</span></span>
+                  <span className="font-mono">{inv.units} unit(s) — ${Number(inv.amount).toLocaleString()}</span>
+                </div>
+              ))}
             </div>
-            <div className="flex justify-between">
-              <span>Eligible Units (will lock):</span>
-              <span className="font-bold text-amber-500">{counts.approved || 0} units</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Cycle Duration:</span>
-              <span className="font-bold">{cycleData?.isDevMode ? `${Math.round((cycleData.cycleDurationMs || 0) / 60000)} mins (DEV)` : "7 days"}</span>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
-              <span>Start timestamp:</span>
-              <span>Server NOW() — not client time</span>
+
+            {/* Carry-forward investors from last cycle */}
+            {loadingCarryForward ? (
+              <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground animate-pulse">
+                Checking carry-forward investors...
+              </div>
+            ) : carryForwardPreview.length > 0 ? (
+              <div className="p-4 bg-amber-500/5 rounded-lg border border-amber-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-amber-600">🔄 Auto Carry-Forward (Previous Cycle)</span>
+                  <span className="font-bold font-mono text-amber-600">{carryForwardPreview.length}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">These investors finished the last cycle and still have ≥ $70 available — they will be auto-enrolled.</p>
+                {carryForwardPreview.map((c: any, i: number) => (
+                  <div key={i} className="flex justify-between text-xs text-muted-foreground pl-2 border-l-2 border-amber-500/30">
+                    <span className="font-medium">{c.name} <span className="font-mono text-amber-600">{c.user_code}</span></span>
+                    <span className="font-mono">{c.units} unit(s) — ${c.amount?.toLocaleString()} (bal: ${Number(c.net_available).toFixed(0)})</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 bg-muted/50 rounded-lg border text-xs text-muted-foreground">
+                🔄 No carry-forward investors — either no previous finalized cycle, or all previous investors have withdrawn.
+              </div>
+            )}
+
+            {/* Summary row */}
+            <div className="p-3 bg-muted rounded-lg border font-mono text-sm space-y-1">
+              <div className="flex justify-between">
+                <span>Total Investors:</span>
+                <span className="font-bold">{approvedInvestments.length + carryForwardPreview.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cycle Duration:</span>
+                <span className="font-bold">{cycleData?.isDevMode ? `${Math.round((cycleData.cycleDurationMs || 0) / 60000)} mins (DEV)` : "7 days"}</span>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground border-t pt-1">
+                <span>Start timestamp:</span>
+                <span>Server NOW() — not client time</span>
+              </div>
             </div>
           </div>
+
           <p className="text-xs text-amber-600">
             ⚠️ Once started, the cycle cannot be stopped. New investments will be queued for the next entry.
           </p>

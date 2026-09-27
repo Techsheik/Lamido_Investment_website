@@ -35,11 +35,13 @@ import updateProfileHandler from "../api-lib/update-profile.js";
 import approveWithdrawalHandler from "../api-lib/admin/approve-withdrawal.js";
 import confirmWithdrawalPaidHandler from "../api-lib/admin/confirm-withdrawal-paid.js";
 import clearTestAccountHandler from "../api-lib/admin/clear-test-account.js";
+import getCarryForwardPreviewHandler from "../api-lib/admin/get-carry-forward-preview.js";
 
 const routes = {
   "GET": {
     "/api/admin/get-investments": getInvestmentsHandler,
     "/api/admin/get-transactions": getTransactionsHandler,
+    "/api/admin/get-carry-forward-preview": getCarryForwardPreviewHandler,
     "/api/admin/get-users": getUsersHandler,
     "/api/admin/get-stats": getStatsHandler,
     "/api/admin/get-plans": getPlansHandler,
