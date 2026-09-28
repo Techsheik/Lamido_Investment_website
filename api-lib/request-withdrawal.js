@@ -81,13 +81,26 @@ export default async function handler(req, res) {
       }
     }
 
-    // 4. Strict Available Balance & Accrued Return Validation
-    const { data: investments, error: invErr } = await supabaseAdmin
+    // 3.5. Lock Check: Disallow withdrawal if user has an active or carry-forward investment in a cycle
+    const { data: userCycleInvs, error: userInvErr } = await supabaseAdmin
       .from("investments")
-      .select("*")
+      .select("id, status, is_carry_forward, amount, units")
       .eq("user_id", user.id);
 
-    if (invErr) throw invErr;
+    if (userInvErr) throw userInvErr;
+
+    const lockedInvestment = (userCycleInvs || []).find(
+      inv => inv.status === "active" || (inv.status === "approved" && inv.is_carry_forward)
+    );
+
+    if (lockedInvestment) {
+      return res.status(400).json({
+        error: "Withdrawal Locked: You currently have an investment participating in an active or upcoming cycle. Your capital and carry-forward profits are actively working in the cycle and cannot be withdrawn until cycle maturity."
+      });
+    }
+
+    // 4. Strict Available Balance & Accrued Return Validation
+    const investments = userCycleInvs || [];
 
     // Fetch existing pending withdrawal transactions
     const { data: pendingTxs } = await supabaseAdmin

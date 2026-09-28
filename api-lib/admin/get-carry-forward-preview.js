@@ -1,14 +1,16 @@
 /**
  * GET /api/admin/get-carry-forward-preview
  *
- * Returns the list of investors who would be auto-carried-forward if
+ * Returns the list of investors who will be auto-carried-forward if
  * the admin starts a cycle right now.
  *
- * Logic mirrors start-cycle.js carry-forward section:
- *  - Find last FINALIZED cycle's distributions
- *  - For each investor who got profit, check current balance minus pending withdrawals
- *  - If net_available >= $70 (min unit), include them in the preview
- *  - Exclude test accounts and users already in the current entry's approved list
+ * Logic:
+ *  - Find last FINALIZED cycle
+ *  - Fetch completed investments from that cycle
+ *  - Exclude test accounts (is_test_account = true)
+ *  - Exclude investors already enrolled in the current entry (e.g. approved)
+ *  - For each eligible investor, their previous investment units & capital carry forward
+ *  - If unwithdrawn profit is >= $70, it can compound into extra units
  *
  * This endpoint is read-only (no DB writes).
  */
@@ -35,7 +37,7 @@ export default async function handler(req, res) {
     // 1. Find the last FINALIZED cycle
     const { data: lastCycle } = await supabaseAdmin
       .from("investment_cycles")
-      .select("id, cycle_number")
+      .select("id, cycle_number, entry_id")
       .eq("status", "FINALIZED")
       .order("cycle_number", { ascending: false })
       .limit(1)
@@ -45,94 +47,91 @@ export default async function handler(req, res) {
       return res.status(200).json({ candidates: [], reason: "No finalized cycle found" });
     }
 
-    // 2. Get distributions from the last cycle
-    const { data: lastDistributions } = await supabaseAdmin
-      .from("cycle_distributions")
-      .select("user_id, profit")
-      .eq("cycle_id", lastCycle.id);
-
-    if (!lastDistributions || lastDistributions.length === 0) {
-      return res.status(200).json({ candidates: [], reason: "No distributions in last cycle" });
+    // 2. Get investments from that last cycle
+    // Query by entry_id first; if none, query by cycle_distributions
+    let lastCycleInvs = [];
+    if (lastCycle.entry_id) {
+      const { data: invs } = await supabaseAdmin
+        .from("investments")
+        .select(`
+          id, user_id, amount, units,
+          profiles:user_id(id, name, user_code, balance, is_test_account)
+        `)
+        .eq("entry_id", lastCycle.entry_id)
+        .eq("status", "completed");
+      lastCycleInvs = invs || [];
     }
 
-    // 3. Find the current entry's approved users (to avoid double-enrolling)
+    // If no investments found by entry_id, fall back to cycle_distributions
+    if (lastCycleInvs.length === 0) {
+      const { data: dists } = await supabaseAdmin
+        .from("cycle_distributions")
+        .select(`
+          investment_id, user_id, eligible_units, investment_amount, profit,
+          profiles:user_id(id, name, user_code, balance, is_test_account)
+        `)
+        .eq("cycle_id", lastCycle.id);
+
+      lastCycleInvs = (dists || []).map(d => ({
+        id: d.investment_id,
+        user_id: d.user_id,
+        units: d.eligible_units,
+        amount: d.investment_amount,
+        profiles: d.profiles,
+      }));
+    }
+
+    // 3. Find users already enrolled in the current entry
     const { data: currentCycle } = await supabaseAdmin
       .from("investment_cycles")
       .select("entry_id")
-      .in("status", ["ENTRY_CLOSED", "READY_TO_START"])
+      .in("status", ["ENTRY_CLOSED", "READY_TO_START", "ENTRY_OPEN", "ACTIVE"])
       .order("cycle_number", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     let alreadyEnrolledUserIds = new Set();
-
     if (currentCycle?.entry_id) {
-      const { data: currentApproved } = await supabaseAdmin
+      const { data: currentInvs } = await supabaseAdmin
         .from("investments")
         .select("user_id")
         .eq("entry_id", currentCycle.entry_id)
-        .eq("status", "approved");
+        .in("status", ["approved", "active"]);
 
-      alreadyEnrolledUserIds = new Set((currentApproved || []).map(inv => inv.user_id));
+      alreadyEnrolledUserIds = new Set((currentInvs || []).map(inv => inv.user_id));
     }
 
-    // 4. Aggregate profit per user
-    const userProfitMap = new Map();
-    for (const dist of lastDistributions) {
-      const existing = userProfitMap.get(dist.user_id) || 0;
-      userProfitMap.set(dist.user_id, existing + Number(dist.profit || 0));
+    // 4. Build candidate list (aggregate by user_id if multiple investments)
+    const userCandidatesMap = new Map();
+
+    for (const inv of lastCycleInvs) {
+      const prof = inv.profiles;
+      if (!prof) continue;
+      // Skip test accounts
+      if (prof.is_test_account) continue;
+      // Skip users already enrolled in this cycle
+      if (alreadyEnrolledUserIds.has(inv.user_id)) continue;
+
+      const existing = userCandidatesMap.get(inv.user_id) || {
+        user_id: inv.user_id,
+        name: prof.name,
+        user_code: prof.user_code,
+        units: 0,
+        amount: 0,
+        balance: Number(prof.balance || 0),
+      };
+
+      existing.units += Number(inv.units || 1);
+      existing.amount += Number(inv.amount || (inv.units * MIN_UNIT_COST));
+      userCandidatesMap.set(inv.user_id, existing);
     }
 
-    // 5. Check each user's eligibility
-    const candidates = [];
-
-    for (const [userId, profit] of userProfitMap.entries()) {
-      if (profit <= 0) continue;
-      if (alreadyEnrolledUserIds.has(userId)) continue;
-
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
-        .select("balance, name, user_code, is_test_account")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!profile) continue;
-      if (profile.is_test_account) continue;
-
-      const currentBalance = Number(profile.balance || 0);
-
-      const { data: pendingWithdrawals } = await supabaseAdmin
-        .from("transactions")
-        .select("amount")
-        .eq("user_id", userId)
-        .eq("type", "withdrawal")
-        .in("status", ["pending", "approved"]);
-
-      const totalPendingWithdrawal = (pendingWithdrawals || []).reduce(
-        (sum, tx) => sum + Number(tx.amount || 0), 0
-      );
-
-      const netAvailable = currentBalance - totalPendingWithdrawal;
-
-      if (netAvailable < MIN_UNIT_COST) continue;
-
-      const units = Math.floor(netAvailable / MIN_UNIT_COST);
-      const amount = units * MIN_UNIT_COST;
-
-      candidates.push({
-        user_id: userId,
-        name: profile.name,
-        user_code: profile.user_code,
-        balance: currentBalance,
-        net_available: netAvailable,
-        units,
-        amount,
-        last_cycle_profit: Math.round(profit * 100) / 100,
-      });
-    }
+    const candidates = Array.from(userCandidatesMap.values());
 
     return res.status(200).json({
       last_cycle_number: lastCycle.cycle_number,
+      total_candidate_units: candidates.reduce((s, c) => s + c.units, 0),
+      total_candidate_amount: candidates.reduce((s, c) => s + c.amount, 0),
       candidates,
     });
 

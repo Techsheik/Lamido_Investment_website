@@ -101,10 +101,10 @@ export default async function handler(req, res) {
     if (invUpdateErr) throw invUpdateErr;
 
     // 6. AUTO-CARRY FORWARD
-    //    Logic: find investors from the LAST finalized cycle who received a
-    //    distribution profit, haven't fully withdrawn it (balance >= $70 = 1 unit),
-    //    and haven't already enrolled in this new cycle.
+    //    Logic: find investors from the LAST finalized cycle
+    //    and roll their completed investment units & capital into this new cycle.
     //    Test accounts (is_test_account = true) are always excluded.
+    //    Users who already have an investment in this cycle's entry are not duplicated.
     let carryForwardCount = 0;
     const carryForwardDetails = [];
 
@@ -114,87 +114,109 @@ export default async function handler(req, res) {
       // Find the most recently FINALIZED cycle (previous cycle)
       const { data: lastCycle } = await supabaseAdmin
         .from("investment_cycles")
-        .select("id, cycle_number")
+        .select("id, cycle_number, entry_id")
         .eq("status", "FINALIZED")
         .order("cycle_number", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (lastCycle) {
-        // Get all distributions from the last cycle
-        const { data: lastDistributions } = await supabaseAdmin
-          .from("cycle_distributions")
-          .select("user_id, profit, total_return")
-          .eq("cycle_id", lastCycle.id);
+        // Fetch completed investments from last cycle
+        let lastCycleInvs = [];
+        if (lastCycle.entry_id) {
+          const { data: invs } = await supabaseAdmin
+            .from("investments")
+            .select(`
+              id, user_id, amount, units,
+              profiles:user_id(id, name, user_code, balance, is_test_account)
+            `)
+            .eq("entry_id", lastCycle.entry_id)
+            .eq("status", "completed");
+          lastCycleInvs = invs || [];
+        }
 
-        if (lastDistributions && lastDistributions.length > 0) {
-          // Track users already enrolled in this cycle (don't double-enroll)
-          const alreadyEnrolledUserIds = new Set(approvedInvestments.map(inv => inv.user_id));
+        // Fallback to cycle_distributions if entry_id had no rows
+        if (lastCycleInvs.length === 0) {
+          const { data: dists } = await supabaseAdmin
+            .from("cycle_distributions")
+            .select(`
+              investment_id, user_id, eligible_units, investment_amount, profit,
+              profiles:user_id(id, name, user_code, balance, is_test_account)
+            `)
+            .eq("cycle_id", lastCycle.id);
 
-          // Aggregate profit per user (one user can have multiple distribution rows)
-          const userProfitMap = new Map();
-          for (const dist of lastDistributions) {
-            const existing = userProfitMap.get(dist.user_id) || 0;
-            userProfitMap.set(dist.user_id, existing + Number(dist.profit || 0));
+          lastCycleInvs = (dists || []).map(d => ({
+            id: d.investment_id,
+            user_id: d.user_id,
+            units: d.eligible_units,
+            amount: d.investment_amount,
+            profiles: d.profiles,
+          }));
+        }
+
+        if (lastCycleInvs.length > 0) {
+          // Check who is already in this entry (approved or active)
+          const { data: existingEntryInvs } = await supabaseAdmin
+            .from("investments")
+            .select("id, user_id, status, is_carry_forward")
+            .eq("entry_id", entryId);
+
+          const existingMap = new Map();
+          for (const inv of (existingEntryInvs || [])) {
+            existingMap.set(inv.user_id, inv);
           }
 
-          for (const [userId, profit] of userProfitMap.entries()) {
-            // Skip users already enrolled in this cycle
-            if (alreadyEnrolledUserIds.has(userId)) continue;
+          // Aggregate units per user from last cycle (excluding test accounts)
+          const userCandidateMap = new Map();
+          for (const inv of lastCycleInvs) {
+            const prof = inv.profiles;
+            if (!prof || prof.is_test_account) continue;
 
-            // Skip if they got no profit (shouldn't happen, but guard it)
-            if (profit <= 0) continue;
+            const existing = userCandidateMap.get(inv.user_id) || {
+              user_id: inv.user_id,
+              name: prof.name,
+              user_code: prof.user_code,
+              units: 0,
+              amount: 0,
+            };
 
-            // Fetch their current profile — check balance and test account flag
-            const { data: profile } = await supabaseAdmin
-              .from("profiles")
-              .select("balance, name, user_code, is_test_account")
-              .eq("id", userId)
-              .maybeSingle();
+            existing.units += Number(inv.units || 1);
+            existing.amount += Number(inv.amount || (inv.units * MIN_UNIT_COST));
+            userCandidateMap.set(inv.user_id, existing);
+          }
 
-            if (!profile) continue;
+          for (const [userId, candidate] of userCandidateMap.entries()) {
+            const existingEntryInv = existingMap.get(userId);
 
-            // Skip test accounts — they are never included in distributions
-            if (profile.is_test_account) {
-              console.log(`[start-cycle] Skipping test account ${profile.user_code} from carry-forward`);
+            if (existingEntryInv) {
+              // If already exists and was approved, make sure it is active
+              if (existingEntryInv.status === "approved") {
+                await supabaseAdmin
+                  .from("investments")
+                  .update({
+                    status: "active",
+                    start_date: nowIso,
+                    end_date: endIso,
+                  })
+                  .eq("id", existingEntryInv.id);
+
+                carryForwardCount++;
+                carryForwardDetails.push({
+                  user_code: candidate.user_code,
+                  name: candidate.name,
+                  units: candidate.units,
+                  amount: candidate.amount,
+                });
+              }
+              // If already active, it's already counted
               continue;
             }
 
-            const currentBalance = Number(profile.balance || 0);
-
-            // Check for pending/approved withdrawals (money the user has requested but not yet received)
-            const { data: pendingWithdrawals } = await supabaseAdmin
-              .from("transactions")
-              .select("amount")
-              .eq("user_id", userId)
-              .eq("type", "withdrawal")
-              .in("status", ["pending", "approved"]);
-
-            const totalPendingWithdrawal = (pendingWithdrawals || []).reduce(
-              (sum, tx) => sum + Number(tx.amount || 0), 0
-            );
-
-            // Net available balance (after accounting for pending withdrawals)
-            const netAvailable = currentBalance - totalPendingWithdrawal;
-
-            // Only carry forward if they have enough for at least 1 unit ($70)
-            if (netAvailable < MIN_UNIT_COST) {
-              console.log(
-                `[start-cycle] Skipping ${profile.user_code}: net balance $${netAvailable.toFixed(2)} < $${MIN_UNIT_COST} minimum`
-              );
-              continue;
-            }
-
-            // Calculate how many units their balance buys
-            const units = Math.floor(netAvailable / MIN_UNIT_COST);
-            const investmentAmount = units * MIN_UNIT_COST;
-
-            // Create a new investment record for them in this cycle's entry
-            // Tag as carry_forward so the UI can badge them separately
+            // Create new carry-forward investment record
             let insertPayload = {
               user_id: userId,
-              amount: investmentAmount,
-              units: units,
+              amount: candidate.amount,
+              units: candidate.units,
               status: "active",
               entry_id: entryId,
               start_date: nowIso,
@@ -207,7 +229,7 @@ export default async function handler(req, res) {
               .from("investments")
               .insert(insertPayload);
 
-            // If is_carry_forward column doesn't exist yet (migration not run), retry without it
+            // Graceful fallback if is_carry_forward column missing in schema cache
             if (carryErr && (
               carryErr.message?.includes("is_carry_forward") ||
               carryErr.message?.includes("schema cache") ||
@@ -222,31 +244,27 @@ export default async function handler(req, res) {
 
             if (!carryErr) {
               carryForwardCount++;
-              alreadyEnrolledUserIds.add(userId);
               carryForwardDetails.push({
-                user_code: profile.user_code,
-                name: profile.name,
-                balance: currentBalance,
-                net_available: netAvailable,
-                units,
-                amount: investmentAmount,
+                user_code: candidate.user_code,
+                name: candidate.name,
+                units: candidate.units,
+                amount: candidate.amount,
               });
               console.log(
-                `[start-cycle] ✅ Auto-carried forward ${profile.user_code} (${profile.name}): ` +
-                `$${netAvailable.toFixed(2)} net balance → ${units} unit(s) ($${investmentAmount})`
+                `[start-cycle] ✅ Auto-carried forward ${candidate.user_code} (${candidate.name}): ` +
+                `${candidate.units} unit(s) ($${candidate.amount})`
               );
             } else {
-              console.warn(`[start-cycle] Failed to carry forward ${profile.user_code}:`, carryErr.message);
+              console.warn(`[start-cycle] Failed to carry forward ${candidate.user_code}:`, carryErr.message);
             }
           }
         } else {
-          console.log(`[start-cycle] No distributions found for last cycle #${lastCycle.cycle_number} — no carry-forward needed`);
+          console.log(`[start-cycle] No completed investments in cycle #${lastCycle.cycle_number} — no carry-forward needed`);
         }
       } else {
-        console.log("[start-cycle] No finalized cycle found — this is likely the first cycle, no carry-forward");
+        console.log("[start-cycle] No finalized cycle found — no carry-forward needed");
       }
     } catch (carryErr) {
-      // Non-fatal: log but do not block cycle from starting
       console.warn("[start-cycle] Auto-carry forward error (non-fatal):", carryErr.message);
     }
 

@@ -164,12 +164,55 @@ export default async function handler(req, res) {
     }
 
     // 7. Compute totals
-    const totalEligibleUnits = eligibleInvestments.reduce(
+    let totalEligibleUnits = eligibleInvestments.reduce(
       (sum, inv) => sum + (Number(inv.units) || 1), 0
     );
-    const totalEligibleAmount = eligibleInvestments.reduce(
+    let totalEligibleAmount = eligibleInvestments.reduce(
       (sum, inv) => sum + Number(inv.amount), 0
     );
+
+    // If cycle is not yet active (e.g. ENTRY_CLOSED, ENTRY_OPEN), calculate prospective eligible units
+    // including approved investments + auto-carry-forward candidates from the last finalized cycle
+    let carryForwardProjectedUnits = 0;
+    let carryForwardProjectedAmount = 0;
+
+    if (currentCycle && currentCycle.status !== "ACTIVE" && currentCycle.status !== "FINALIZED") {
+      const approvedUnits = approvedInvestments.reduce((sum, inv) => sum + (Number(inv.units) || 1), 0);
+      const approvedAmount = approvedInvestments.reduce((sum, inv) => sum + Number(inv.amount), 0);
+
+      // Check if last finalized cycle has completed investments to carry forward
+      const { data: lastFinalized } = await supabaseAdmin
+        .from("investment_cycles")
+        .select("id, entry_id")
+        .eq("status", "FINALIZED")
+        .order("cycle_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastFinalized) {
+        let lastInvs = [];
+        if (lastFinalized.entry_id) {
+          const { data: invs } = await supabaseAdmin
+            .from("investments")
+            .select("user_id, amount, units, profiles:user_id(is_test_account)")
+            .eq("entry_id", lastFinalized.entry_id)
+            .eq("status", "completed");
+          lastInvs = invs || [];
+        }
+
+        const enrolledIds = new Set(approvedInvestments.map(i => i.user_id));
+        for (const inv of lastInvs) {
+          if (inv.profiles?.is_test_account) continue;
+          if (enrolledIds.has(inv.user_id)) continue;
+          enrolledIds.add(inv.user_id);
+          carryForwardProjectedUnits += Number(inv.units || 1);
+          carryForwardProjectedAmount += Number(inv.amount || (inv.units * 70));
+        }
+      }
+
+      totalEligibleUnits = approvedUnits + carryForwardProjectedUnits;
+      totalEligibleAmount = approvedAmount + carryForwardProjectedAmount;
+    }
 
     // 8. System state summary for admin UI
     const systemState = deriveSystemState(currentCycle, currentEntry);
@@ -189,7 +232,7 @@ export default async function handler(req, res) {
         eligible_amount: currentCycle.status === "ACTIVE"
           ? (currentCycle.eligible_amount || totalEligibleAmount)
           : totalEligibleAmount,
-        eligible_investments_count: eligibleInvestments.length
+        eligible_investments_count: eligibleInvestments.length || (approvedInvestments.length + (carryForwardProjectedUnits > 0 ? 1 : 0))
       } : null,
 
       // Entry window
@@ -212,7 +255,8 @@ export default async function handler(req, res) {
         approved: approvedInvestments.length,
         eligible: eligibleInvestments.length,
         totalEligibleUnits,
-        totalEligibleAmount
+        totalEligibleAmount,
+        carryForwardProjectedUnits
       }
     });
 
@@ -348,6 +392,7 @@ function mapInvestment(inv) {
     type: inv.type,
     status: inv.status,
     entry_id: inv.entry_id,
+    is_carry_forward: Boolean(inv.is_carry_forward),
     created_at: inv.created_at,
     start_date: inv.start_date,
     end_date: inv.end_date

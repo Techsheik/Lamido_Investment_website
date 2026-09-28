@@ -140,8 +140,13 @@ const Withdraw = () => {
   const grossAccruedReturn = Math.max(profileBalance, activeAccrued);
   const totalAccruedReturn = Math.max(0, grossAccruedReturn - totalPendingWithdrawals);
 
-  // Check if user can withdraw (must be at least 7 days since last withdrawal or first time)
+  const hasActiveInvestment = (investments || []).some(
+    (inv: any) => inv.status === "active" || (inv.status === "approved" && inv.is_carry_forward)
+  );
+
+  // Check if user can withdraw (must be at least 7 days since last withdrawal or first time, and no active cycle)
   const canWithdraw = () => {
+    if (hasActiveInvestment) return false;
     if (!profile?.last_withdrawal_date) return true; // First withdrawal
     
     const lastWithdrawal = new Date(profile.last_withdrawal_date);
@@ -307,6 +312,22 @@ const Withdraw = () => {
           </div>
         )}
 
+        {hasActiveInvestment && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="font-bold text-sm flex items-center gap-1.5 text-amber-500 dark:text-amber-400">
+                🔒 Active Cycle Running — Withdrawals Locked
+              </div>
+              <p className="text-xs text-muted-foreground">
+                You currently have an active or carry-forward investment running in the community pool. Your capital and returns are actively working and cannot be withdrawn until the cycle completes.
+              </p>
+            </div>
+            <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40 px-3 py-1 font-bold whitespace-nowrap">
+              Active Cycle Locked
+            </Badge>
+          </div>
+        )}
+
         {totalPendingWithdrawals > 0 && (
           <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-500 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -363,11 +384,15 @@ const Withdraw = () => {
               <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
                 ≈ {formatNGN(totalAccruedReturn * exchangeRate)}
               </p>
-              {!canWithdraw() && (
+              {hasActiveInvestment ? (
+                <p className="text-xs text-amber-500 font-medium mt-2">
+                  🔒 Locked: Investment is actively participating in ongoing cycle
+                </p>
+              ) : !canWithdraw() ? (
                 <p className="text-xs text-destructive mt-2">
                   Next withdrawal available in {daysUntilNextWithdrawal()} day{daysUntilNextWithdrawal() !== 1 ? 's' : ''}
                 </p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </div>
@@ -379,8 +404,8 @@ const Withdraw = () => {
           <CardContent>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full md:w-auto" disabled={!canWithdraw() || totalAccruedReturn <= 0 || totalPendingWithdrawals > 0}>
-                  {totalPendingWithdrawals > 0 ? "Withdrawal Pending Review..." : "Request Withdrawal"}
+                <Button className="w-full md:w-auto" disabled={!canWithdraw() || totalAccruedReturn <= 0 || totalPendingWithdrawals > 0 || hasActiveInvestment}>
+                  {hasActiveInvestment ? "Withdrawals Locked (Active Cycle)" : totalPendingWithdrawals > 0 ? "Withdrawal Pending Review..." : "Request Withdrawal"}
                 </Button>
               </DialogTrigger>
               <DialogContent>

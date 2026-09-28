@@ -815,17 +815,17 @@ export function AdminCycleManagement() {
                   <span className="text-sm font-semibold text-amber-600">🔄 Auto Carry-Forward (Previous Cycle)</span>
                   <span className="font-bold font-mono text-amber-600">{carryForwardPreview.length}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">These investors finished the last cycle and still have ≥ $70 available — they will be auto-enrolled.</p>
+                <p className="text-xs text-muted-foreground">These investors completed the last cycle and are automatically rolled forward with their units.</p>
                 {carryForwardPreview.map((c: any, i: number) => (
                   <div key={i} className="flex justify-between text-xs text-muted-foreground pl-2 border-l-2 border-amber-500/30">
                     <span className="font-medium">{c.name} <span className="font-mono text-amber-600">{c.user_code}</span></span>
-                    <span className="font-mono">{c.units} unit(s) — ${c.amount?.toLocaleString()} (bal: ${Number(c.net_available).toFixed(0)})</span>
+                    <span className="font-mono font-semibold text-foreground">{c.units} unit(s) — ${c.amount?.toLocaleString()}</span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="p-3 bg-muted/50 rounded-lg border text-xs text-muted-foreground">
-                🔄 No carry-forward investors — either no previous finalized cycle, or all previous investors have withdrawn.
+                🔄 No carry-forward investors — either no previous finalized cycle, or all investors have enrolled in this entry.
               </div>
             )}
 
@@ -835,19 +835,23 @@ export function AdminCycleManagement() {
                 <span>Total Investors:</span>
                 <span className="font-bold">{approvedInvestments.length + carryForwardPreview.length}</span>
               </div>
+              <div className="flex justify-between text-amber-500 font-bold">
+                <span>Total Units to Lock:</span>
+                <span>{counts.totalEligibleUnits || (approvedInvestments.reduce((s: number, i: any) => s + (i.units || 1), 0) + carryForwardPreview.reduce((s: number, c: any) => s + (c.units || 1), 0))} Units</span>
+              </div>
               <div className="flex justify-between">
                 <span>Cycle Duration:</span>
                 <span className="font-bold">{cycleData?.isDevMode ? `${Math.round((cycleData.cycleDurationMs || 0) / 60000)} mins (DEV)` : "7 days"}</span>
               </div>
               <div className="flex justify-between text-xs text-muted-foreground border-t pt-1">
                 <span>Start timestamp:</span>
-                <span>Server NOW() — not client time</span>
+                <span>Server NOW() — authoritative</span>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-amber-600">
-            ⚠️ Once started, the cycle cannot be stopped. New investments will be queued for the next entry.
+          <p className="text-xs text-muted-foreground">
+            ℹ️ When started, the 7-day clock begins. You can cancel the ongoing cycle if needed using the Cancel Ongoing Cycle button.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowStartCycleModal(false)}>Cancel</Button>

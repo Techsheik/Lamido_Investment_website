@@ -7,7 +7,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, ArrowUpRight, X, Clock, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Calendar } from "lucide-react";
+import { TrendingUp, ArrowUpRight, X, Clock, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Calendar, RefreshCw, Lock } from "lucide-react";
 import { format } from "date-fns";
 
 const Investments = () => {
@@ -357,6 +357,11 @@ const Investments = () => {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {investment.is_carry_forward && (
+                          <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono text-[10px] flex items-center gap-1">
+                            <RefreshCw className="w-2.5 h-2.5" /> Carry Forward
+                          </Badge>
+                        )}
                         <Badge variant={badgeVariant} className={isApprovedWaiting ? "bg-muted text-foreground border" : ""}>
                           {badgeLabel}
                         </Badge>
@@ -370,6 +375,15 @@ const Investments = () => {
                   {/* Expandable Detail Section */}
                   {expandedCards.has(investment.id) ? (
                     <CardContent className="space-y-4 border-t pt-4">
+                      {investment.is_carry_forward && (
+                        <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs">
+                          <RefreshCw className="h-4 w-4 shrink-0" />
+                          <p className="font-medium">
+                            Auto Carry-Forward: Your {investment.units} unit(s) (${Number(investment.amount).toLocaleString()}) were rolled forward into this cycle. Your capital is actively participating.
+                          </p>
+                        </div>
+                      )}
+
                       {isPending && (
                         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted border">
                           <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -522,20 +536,29 @@ const Investments = () => {
                             </div>
                           </div>
 
-                          {/* Withdraw only — no reinvest button */}
-                          <div className="pt-1 flex justify-end items-center gap-2 border-t">
-                            <p className="text-[11px] text-muted-foreground flex-1">
-                              Profit added to your balance. Withdraw or let it continue in the next cycle.
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs"
-                              onClick={() => navigate("/withdraw")}
-                            >
-                              <ArrowUpRight className="h-3.5 w-3.5" />
-                              Withdraw / Claim
-                            </Button>
+                          {/* Withdraw button vs locked state */}
+                          <div className="pt-2 flex justify-between items-center gap-2 border-t">
+                            {allInvestments.some(i => i.status === "active" || (i.status === "approved" && i.is_carry_forward)) ? (
+                              <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 font-medium py-1">
+                                <Lock className="h-4 w-4 shrink-0" />
+                                <span>Investment & returns carried forward into active cycle. Withdrawals are locked while participating.</span>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-[11px] text-muted-foreground flex-1">
+                                  Profit added to your balance. Withdraw or let it continue in the next cycle.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 text-xs"
+                                  onClick={() => navigate("/withdraw")}
+                                >
+                                  <ArrowUpRight className="h-3.5 w-3.5" />
+                                  Withdraw / Claim
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
