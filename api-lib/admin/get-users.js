@@ -40,10 +40,24 @@ export default async function handler(req, res) {
         .select("user_id, profit")
         .in("user_id", userIds);
 
-      const invMap = investments?.reduce((acc, inv) => {
-        acc[inv.user_id] = (acc[inv.user_id] || 0) + Number(inv.amount || 0);
-        return acc;
-      }, {}) || {};
+      // Group investments by user: prioritize active + approved to prevent doubling carry-forward
+      const userInvsMap = new Map();
+      for (const inv of (investments || [])) {
+        if (!userInvsMap.has(inv.user_id)) {
+          userInvsMap.set(inv.user_id, []);
+        }
+        userInvsMap.get(inv.user_id).push(inv);
+      }
+
+      const invMap = {};
+      for (const userId of userIds) {
+        const uInvs = userInvsMap.get(userId) || [];
+        const activeOrApproved = uInvs.filter(i => i.status === "active" || i.status === "approved");
+        const currentPortfolio = activeOrApproved.length > 0
+          ? activeOrApproved
+          : uInvs.filter(i => i.status === "completed");
+        invMap[userId] = currentPortfolio.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+      }
 
       const distMap = distributions?.reduce((acc, dist) => {
         acc[dist.user_id] = (acc[dist.user_id] || 0) + Number(dist.profit || 0);

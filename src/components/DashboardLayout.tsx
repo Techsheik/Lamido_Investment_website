@@ -194,8 +194,6 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
                         {/* 2. Matured Investments & Distributions */}
                         {maturedInvestments.map((inv: any) => {
-                          const roi = Number(inv.roi) || 10;
-                          const returnVal = (Number(inv.amount) * (roi / 100)).toFixed(2);
                           return (
                             <DropdownMenuItem 
                               key={inv.id}
@@ -206,10 +204,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Due Date Reached / Distributed!
                               </div>
                               <p className="text-xs font-medium text-foreground mt-0.5">
-                                {inv.type} (${Number(inv.amount).toLocaleString()})
+                                {inv.type || "Cryptocurrency Investment"} (${Number(inv.amount).toLocaleString()})
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                Return of +${returnVal} processed.
+                                Cycle distribution processed. Click to view details.
                               </p>
                             </DropdownMenuItem>
                           );

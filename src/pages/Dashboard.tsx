@@ -117,14 +117,19 @@ const Dashboard = () => {
   const heroAnnouncement = announcements && announcements.length > 0 ? announcements[0] : null;
   const popupAnnouncement = announcements?.find((a) => a.show_popup);
 
-  // Count active, approved, AND completed investments for accurate portfolio totals
-  const validInvestments = investments?.filter(inv =>
-    inv.status === "active" || inv.status === "approved" || inv.status === "completed"
+  // Current active portfolio consists of active and approved investments.
+  // If there are no active/approved investments (e.g. between cycles), show completed investments.
+  const activeAndApproved = investments?.filter(inv =>
+    inv.status === "active" || inv.status === "approved"
   ) || [];
 
-  const totalInvested = validInvestments.reduce((sum, inv) => sum + Number(inv.amount), 0);
-  const activeInvestments = validInvestments.length;
-  const totalUnits = validInvestments.reduce((sum, inv) => sum + (Number(inv.units) || 1), 0);
+  const currentInvestments = activeAndApproved.length > 0
+    ? activeAndApproved
+    : investments?.filter(inv => inv.status === "completed") || [];
+
+  const totalInvested = currentInvestments.reduce((sum, inv) => sum + Number(inv.amount), 0);
+  const totalUnits = currentInvestments.reduce((sum, inv) => sum + (Number(inv.units) || 1), 0);
+  const activeInvestments = activeAndApproved.length;
 
   // Real admin-confirmed profit from cycle_distributions table
   const totalDistributedProfit = userDistributions.reduce((sum, d) => sum + Number(d.profit || 0), 0);

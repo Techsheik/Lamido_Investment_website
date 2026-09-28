@@ -18,17 +18,29 @@ export default async function handler(req, res) {
 
     const [usersRes, investmentsRes, transactionsRes] = await Promise.all([
       supabaseAdmin.from("profiles").select("*", { count: "exact" }),
-      supabaseAdmin.from("investments").select("amount, status"),
+      supabaseAdmin.from("investments").select("user_id, amount, status"),
       supabaseAdmin.from("transactions").select("type, amount, status"),
     ]);
 
     const totalUsers = usersRes.count || 0;
     
-    // Only count active/approved/completed investments (exclude pending or rejected)
-    const approvedInvestments = (investmentsRes.data || []).filter(
-      (inv) => inv.status === "active" || inv.status === "approved" || inv.status === "completed"
-    );
-    const totalInvestments = approvedInvestments.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    // Group investments by user: prioritize active + approved to prevent doubling carry-forward
+    const userInvsMap = new Map();
+    for (const inv of (investmentsRes.data || [])) {
+      if (!userInvsMap.has(inv.user_id)) {
+        userInvsMap.set(inv.user_id, []);
+      }
+      userInvsMap.get(inv.user_id).push(inv);
+    }
+
+    let totalInvestments = 0;
+    for (const [, uInvs] of userInvsMap.entries()) {
+      const activeOrApproved = uInvs.filter(i => i.status === "active" || i.status === "approved");
+      const currentPortfolio = activeOrApproved.length > 0
+        ? activeOrApproved
+        : uInvs.filter(i => i.status === "completed");
+      totalInvestments += currentPortfolio.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    }
 
     // Only count completed/approved deposit and withdrawal transactions
     const approvedTransactions = (transactionsRes.data || []).filter(

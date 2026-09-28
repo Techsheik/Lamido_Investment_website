@@ -251,7 +251,11 @@ const AdminUserDetail = () => {
     });
   };
 
-  const totalInvested = investments?.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0) || 0;
+  const activeOrApprovedInvs = investments?.filter((i: any) => i.status === "active" || i.status === "approved") || [];
+  const currentInvs = activeOrApprovedInvs.length > 0
+    ? activeOrApprovedInvs
+    : investments?.filter((i: any) => i.status === "completed") || [];
+  const totalInvested = currentInvs.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
 
   return (
     <AdminLayout>
