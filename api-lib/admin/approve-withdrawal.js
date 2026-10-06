@@ -174,12 +174,13 @@ export default async function handler(req, res) {
     // 5. Fetch user profile balance
     const { data: uProf } = await supabaseAdmin
       .from("profiles")
-      .select("balance, accrued_return, name")
+      .select("balance, accrued_return, total_roi, name")
       .eq("id", targetUserId)
       .maybeSingle();
 
     let curBal = Number(uProf?.balance || 0);
     let curAccrued = Number(uProf?.accrued_return || 0);
+    let curTotalRoi = Number(uProf?.total_roi || 0);
     let toDeduct = dbAmount;
 
     if (curBal >= toDeduct) {
@@ -191,13 +192,15 @@ export default async function handler(req, res) {
       curAccrued = Math.max(0, curAccrued - toDeduct);
     }
 
+    const newTotalRoi = Math.max(0, Math.round((curTotalRoi - dbAmount) * 100) / 100);
+
     // 6. Deduct balance
     await supabaseAdmin
       .from("profiles")
       .update({
         balance: Math.round(curBal * 100) / 100,
         accrued_return: Math.round(curAccrued * 100) / 100,
-        last_withdrawal_date: nowIso,
+        total_roi: newTotalRoi,
         updated_at: nowIso
       })
       .eq("id", targetUserId);

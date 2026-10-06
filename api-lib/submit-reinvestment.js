@@ -39,13 +39,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "User profile not found" });
     }
 
-    // Fetch existing pending withdrawal transactions
+    // Fetch existing pending OR approved withdrawal transactions
     const { data: pendingTxs } = await supabaseAdmin
       .from("transactions")
       .select("amount")
       .eq("user_id", user.id)
       .eq("type", "withdrawal")
-      .eq("status", "pending");
+      .in("status", ["pending", "approved"]);
 
     const totalPendingWithdrawals = (pendingTxs || []).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
     const userBalance = Number(profile.balance || 0);

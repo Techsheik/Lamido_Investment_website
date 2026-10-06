@@ -92,10 +92,10 @@ export default async function handler(req, res) {
 
     console.log(`[confirm-withdrawal-paid] Processing $${dbAmount} withdrawal for user ${targetUserId} (tx: ${transactionId}, status was: ${tx.status})`);
 
-    // 6. Fetch current user balances
+    // 6. Fetch current user balances (including total_roi)
     const { data: uProf, error: profErr } = await supabaseAdmin
       .from("profiles")
-      .select("balance, accrued_return, name")
+      .select("balance, accrued_return, total_roi, name")
       .eq("id", targetUserId)
       .maybeSingle();
 
@@ -103,9 +103,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "User profile not found" });
     }
 
-    // 7. Calculate deduction — drain balance first, then accrued_return
+    // 7. Calculate deduction — drain balance first, then accrued_return, and also deduct total_roi
     let curBal = Number(uProf.balance || 0);
     let curAccrued = Number(uProf.accrued_return || 0);
+    let curTotalRoi = Number(uProf.total_roi || 0);
     let toDeduct = dbAmount;
 
     if (curBal >= toDeduct) {
@@ -119,21 +120,25 @@ export default async function handler(req, res) {
 
     const newBalance = Math.round(curBal * 100) / 100;
     const newAccrued = Math.round(curAccrued * 100) / 100;
+    const newTotalRoi = Math.max(0, Math.round((curTotalRoi - dbAmount) * 100) / 100);
 
     // 8. Deduct balance from profile
-    const { error: updateProfErr } = await supabaseAdmin
+    // Note: last_withdrawal_date is optional and omitted to avoid schema cache errors
+    let profPayload = {
+      balance: newBalance,
+      accrued_return: newAccrued,
+      total_roi: newTotalRoi,
+      updated_at: nowIso,
+    };
+
+    let { error: updateProfErr } = await supabaseAdmin
       .from("profiles")
-      .update({
-        balance: newBalance,
-        accrued_return: newAccrued,
-        last_withdrawal_date: nowIso,
-        updated_at: nowIso,
-      })
+      .update(profPayload)
       .eq("id", targetUserId);
 
     if (updateProfErr) {
       console.error("[confirm-withdrawal-paid] Failed to update profile balance:", updateProfErr.message);
-      return res.status(500).json({ error: "Failed to deduct balance. Please try again." });
+      return res.status(500).json({ error: `Failed to deduct balance: ${updateProfErr.message}` });
     }
 
     console.log(`[confirm-withdrawal-paid] Balance deducted: $${dbAmount} from user ${targetUserId}. New balance: $${newBalance}`);

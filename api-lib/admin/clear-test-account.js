@@ -70,7 +70,6 @@ export default async function handler(req, res) {
         accrued_return: 0,
         total_roi: 0,
         total_invested: 0,
-        last_withdrawal_date: null,
         is_test_account: true,
         updated_at: nowIso,
       })

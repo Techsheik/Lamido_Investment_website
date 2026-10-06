@@ -153,6 +153,45 @@ export default async function handler(req, res) {
         .eq("status", "pending");
     }
 
+    // Deduct balance if withdrawal is marked completed
+    if (newStatus === "completed" && txType === "withdrawal" && targetUserId) {
+      const { data: prof } = await supabaseAdmin
+        .from("profiles")
+        .select("balance, accrued_return, total_roi")
+        .eq("id", targetUserId)
+        .maybeSingle();
+
+      if (prof) {
+        let curBal = Number(prof.balance || 0);
+        let curAccrued = Number(prof.accrued_return || 0);
+        let curTotalRoi = Number(prof.total_roi || 0);
+        let toDeduct = dbAmount;
+
+        if (curBal >= toDeduct) {
+          curBal -= toDeduct;
+          toDeduct = 0;
+        } else {
+          toDeduct -= curBal;
+          curBal = 0;
+          curAccrued = Math.max(0, curAccrued - toDeduct);
+        }
+
+        const newBalance = Math.round(curBal * 100) / 100;
+        const newAccrued = Math.round(curAccrued * 100) / 100;
+        const newTotalRoi = Math.max(0, Math.round((curTotalRoi - dbAmount) * 100) / 100);
+
+        await supabaseAdmin
+          .from("profiles")
+          .update({
+            balance: newBalance,
+            accrued_return: newAccrued,
+            total_roi: newTotalRoi,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", targetUserId);
+      }
+    }
+
     console.log(`[update-transaction-status] Admin ${adminUserId} set tx ${id} → ${newStatus}`);
     res.status(200).json({ ok: true, transaction });
   } catch (err) {

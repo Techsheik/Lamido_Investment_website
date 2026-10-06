@@ -102,41 +102,29 @@ export default async function handler(req, res) {
     // 4. Strict Available Balance & Accrued Return Validation
     const investments = userCycleInvs || [];
 
-    // Fetch existing pending withdrawal transactions
+    // Fetch existing pending OR approved withdrawal transactions
     const { data: pendingTxs } = await supabaseAdmin
       .from("transactions")
       .select("amount")
       .eq("user_id", user.id)
       .eq("type", "withdrawal")
-      .eq("status", "pending");
+      .in("status", ["pending", "approved"]);
 
     const totalPendingWithdrawalAmount = (pendingTxs || []).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
-    const profileBalance = Number(profile?.balance || profile?.accrued_return || profile?.total_roi || 0);
-    const activeAccrued = (investments || []).reduce((sum, inv) => {
-      if (!inv.start_date) return sum;
-      const startDate = new Date(inv.start_date);
-      const endDate = inv.end_date ? new Date(inv.end_date) : new Date(startDate.getTime() + 7 * 86400000);
-      const now = new Date();
-      if (now >= endDate || inv.status === "completed") {
-        const totalReturn = Number(inv.amount) * Number(inv.roi || 0) / 100;
-        return sum + totalReturn;
-      }
-      return sum;
-    }, 0);
-
-    const grossAvailableBalance = Math.max(profileBalance, activeAccrued);
+    const profileBalance = Number(profile?.balance ?? profile?.accrued_return ?? 0);
+    const grossAvailableBalance = profileBalance;
     const netAvailableBalance = Math.max(0, grossAvailableBalance - totalPendingWithdrawalAmount);
 
     // Reject if net balance is zero or less
     if (netAvailableBalance <= 0) {
       if (totalPendingWithdrawalAmount > 0) {
         return res.status(400).json({
-          error: `Pending Withdrawal Exists: You already have $${totalPendingWithdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })} in pending withdrawal requests awaiting admin approval. Net available balance for new withdrawals is $0.00.`
+          error: `Pending Withdrawal Exists: You already have $${totalPendingWithdrawalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })} in pending/approved withdrawal requests awaiting payment. Net available balance for new withdrawals is $0.00.`
         });
       }
       return res.status(400).json({
-        error: "Insufficient funds. You do not have any available balance or accrued returns for withdrawal at this time."
+        error: "Insufficient funds. You do not have any available balance for withdrawal at this time."
       });
     }
 

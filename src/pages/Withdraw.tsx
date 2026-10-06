@@ -82,7 +82,7 @@ const Withdraw = () => {
         .select("*")
         .eq("user_id", user.id)
         .eq("type", "withdrawal")
-        .eq("status", "pending");
+        .in("status", ["pending", "approved"]);
       return data || [];
     },
     enabled: !!user,
@@ -123,22 +123,9 @@ const Withdraw = () => {
   const totalInvested = investments?.reduce((sum, inv) => sum + Number(inv.amount), 0) || 0;
   const totalPendingWithdrawals = pendingTransactions?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0;
   
-  // Calculate Total Accrued Return / Net Available Balance (minus pending withdrawals)
-  const profileBalance = Number(profile?.balance || profile?.accrued_return || profile?.total_roi || 0);
-  const activeAccrued = investments?.reduce((sum, inv) => {
-    if (!inv.start_date) return sum;
-    const startDate = new Date(inv.start_date);
-    const now = new Date();
-    const daysPassed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysPassed >= 7 || inv.status === "completed") {
-      const totalReturn = Number(inv.amount) * Number(inv.roi || 0) / 100;
-      return sum + totalReturn;
-    }
-    return sum;
-  }, 0) || 0;
-
-  const grossAccruedReturn = Math.max(profileBalance, activeAccrued);
-  const totalAccruedReturn = Math.max(0, grossAccruedReturn - totalPendingWithdrawals);
+  // Calculate Net Available Balance (profile balance minus pending/approved withdrawals)
+  const profileBalance = Number(profile?.balance ?? profile?.accrued_return ?? 0);
+  const totalAccruedReturn = Math.max(0, profileBalance - totalPendingWithdrawals);
 
   const hasActiveInvestment = (investments || []).some(
     (inv: any) => inv.status === "active" || (inv.status === "approved" && inv.is_carry_forward)

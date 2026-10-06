@@ -141,6 +141,8 @@ const AdminTransactions = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-withdrawals"] });
       toast({
         title: "✅ Payment Confirmed",
         description: data.message || "User's balance has been deducted successfully.",
@@ -262,6 +264,11 @@ const AdminTransactions = () => {
                       <div className="flex flex-col">
                         <span className="font-semibold text-foreground text-sm">{transaction.profile?.name || "Unknown User"}</span>
                         <span className="font-mono text-xs text-blue-500 dark:text-blue-400 font-bold">{transaction.profile?.user_code || "N/A"}</span>
+                        {transaction.profile?.balance !== undefined && (
+                          <span className="text-[11px] text-muted-foreground mt-0.5">
+                            Bal: <span className="font-semibold text-emerald-600 dark:text-emerald-400">${Number(transaction.profile.balance).toFixed(2)}</span>
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="capitalize">
@@ -281,22 +288,25 @@ const AdminTransactions = () => {
                     <TableCell>
                       <Badge 
                         variant={
-                          transaction.status === "completed" || transaction.status === "approved" ? "default" : 
+                          transaction.status === "completed" ? "default" : 
+                          transaction.status === "approved" ? "outline" :
                           transaction.status === "pending" ? "secondary" : 
                           "destructive"
                         }
+                        className={transaction.status === "approved" ? "border-amber-500 text-amber-600 dark:text-amber-400" : ""}
                       >
-                        {transaction.status}
+                        {transaction.status === "approved" && transaction.type === "withdrawal" ? "approved (pending transfer)" : transaction.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-2">
-                        {/* Step 1: Approve (pending → approved) — for ANY pending transaction */}
-                        {(transaction.status === "pending" || transaction.status === "failed") && (
+                        {/* Pending Deposits */}
+                        {(transaction.status === "pending" || transaction.status === "failed") && transaction.type !== "withdrawal" && (
                           <div className="flex gap-2">
                             <Button
                               size="sm"
                               variant="default"
+                              title="Approve and credit deposit"
                               onClick={() => updateStatus.mutate({ 
                                 id: transaction.id, 
                                 status: "approved",
@@ -309,6 +319,7 @@ const AdminTransactions = () => {
                             <Button
                               size="sm"
                               variant="destructive"
+                              title="Reject deposit"
                               onClick={() => updateStatus.mutate({ 
                                 id: transaction.id, 
                                 status: "rejected",
@@ -321,48 +332,87 @@ const AdminTransactions = () => {
                           </div>
                         )}
 
-                        {/* Step 2: Confirm Paid — only for approved WITHDRAWALS */}
-                        {transaction.status === "approved" && transaction.type === "withdrawal" && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
+                        {/* Withdrawals (Pending or Approved) — Confirm Paid Dialog */}
+                        {(transaction.status === "pending" || transaction.status === "approved") && transaction.type === "withdrawal" && (
+                          <div className="flex flex-col gap-1.5">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950 gap-1 font-semibold w-full"
+                                  disabled={confirmPaid.isPending || updateStatus.isPending}
+                                >
+                                  <Banknote className="w-4 h-4" />
+                                  Confirm Paid
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Confirm Payment Made & Deduct Balance?</AlertDialogTitle>
+                                  <AlertDialogDescription className="space-y-2">
+                                    <p>
+                                      You are confirming that you have <strong>transferred the funds</strong> to the investor's bank account:
+                                    </p>
+                                    <div className="rounded-lg border p-3 bg-muted text-sm space-y-1">
+                                      <p><span className="font-medium">Investor:</span> {transaction.profile?.name || "Unknown"}</p>
+                                      <p><span className="font-medium">Withdrawal Amount:</span> ${Number(transaction.amount).toFixed(2)}</p>
+                                      {transaction.profile?.balance !== undefined && (
+                                        <p><span className="font-medium">Current Balance:</span> ${Number(transaction.profile.balance).toFixed(2)}</p>
+                                      )}
+                                      <p><span className="font-medium">Reference:</span> {transaction.reference || "N/A"}</p>
+                                    </div>
+                                    <p className="text-orange-600 dark:text-orange-400 font-medium">
+                                      ⚠️ This will mark the transaction as completed and <strong>permanently deduct ${Number(transaction.amount).toFixed(2)}</strong> from the investor's balance.
+                                    </p>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => confirmPaid.mutate(transaction.id)}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    Yes, I've Paid — Deduct Balance
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+
+                            {/* Secondary actions: Approve (if pending) or Reject */}
+                            <div className="flex gap-1.5">
+                              {transaction.status === "pending" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-xs text-muted-foreground hover:text-foreground flex-1"
+                                  title="Mark as approved without deducting yet (transfer funds later)"
+                                  onClick={() => updateStatus.mutate({ 
+                                    id: transaction.id, 
+                                    status: "approved",
+                                    transaction 
+                                  })}
+                                  disabled={updateStatus.isPending || confirmPaid.isPending}
+                                >
+                                  Mark Approved
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950 gap-1 font-semibold"
-                                disabled={confirmPaid.isPending}
+                                variant="ghost"
+                                className="text-xs text-destructive hover:bg-destructive/10 flex-1"
+                                title="Reject or cancel this withdrawal"
+                                onClick={() => updateStatus.mutate({ 
+                                  id: transaction.id, 
+                                  status: "rejected",
+                                  transaction 
+                                })}
+                                disabled={updateStatus.isPending || confirmPaid.isPending}
                               >
-                                <Banknote className="w-4 h-4" />
-                                Confirm Paid
+                                Reject
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Confirm Payment Made?</AlertDialogTitle>
-                                <AlertDialogDescription className="space-y-2">
-                                  <p>
-                                    You are about to confirm that you have <strong>manually transferred</strong> the following withdrawal to the investor:
-                                  </p>
-                                  <div className="rounded-lg border p-3 bg-muted text-sm space-y-1">
-                                    <p><span className="font-medium">Investor:</span> {transaction.profile?.name || "Unknown"}</p>
-                                    <p><span className="font-medium">Amount:</span> ${Number(transaction.amount).toFixed(2)}</p>
-                                    <p><span className="font-medium">Reference:</span> {transaction.reference || "N/A"}</p>
-                                  </div>
-                                  <p className="text-orange-600 dark:text-orange-400 font-medium">
-                                    ⚠️ This will permanently deduct ${Number(transaction.amount).toFixed(2)} from the investor's account balance. This cannot be undone.
-                                  </p>
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => confirmPaid.mutate(transaction.id)}
-                                  className="bg-green-600 hover:bg-green-700"
-                                >
-                                  Yes, I've Paid — Deduct Balance
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </TableCell>

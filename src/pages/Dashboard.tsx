@@ -59,7 +59,7 @@ const Dashboard = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("accrued_return, total_roi")
+        .select("balance, accrued_return, total_roi")
         .eq("id", user.id)
         .single();
       return data;
@@ -136,6 +136,7 @@ const Dashboard = () => {
   const totalAccruedReturn = totalDistributedProfit > 0
     ? totalDistributedProfit
     : Number(profile?.accrued_return || profile?.total_roi || 0);
+  const walletBalance = Number(profile?.balance ?? profile?.accrued_return ?? 0);
 
   const getPriorityBadge = (priority?: string) => {
     switch (priority) {
@@ -232,8 +233,11 @@ const Dashboard = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Profit Earned
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                <span>Total Profit Earned</span>
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                  Bal: ${walletBalance.toFixed(2)}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -241,7 +245,9 @@ const Dashboard = () => {
               <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-bold mt-1">
                 ≈ {formatNGN(totalAccruedReturn * exchangeRate)}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Distributed at the end of each 7-day cycle</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Current Withdrawable Balance: <strong className="text-foreground">${walletBalance.toFixed(2)}</strong>
+              </p>
             </CardContent>
           </Card>
 
