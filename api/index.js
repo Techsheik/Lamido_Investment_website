@@ -94,8 +94,11 @@ const routes = {
 };
 
 export default async function handler(req, res) {
-  // Extract path without query parameters
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // Extract path: check x-matched-path (set by Vercel rewrites) or req.url
+  const rawPath = (req.url === "/api/index.js" || req.url === "/api/index" || req.url === "/api")
+    ? (req.headers?.["x-matched-path"] || req.headers?.["x-forwarded-uri"] || req.url)
+    : req.url;
+  const url = new URL(rawPath, `http://${req.headers?.host || 'localhost'}`);
   const pathname = url.pathname;
   const method = req.method;
 

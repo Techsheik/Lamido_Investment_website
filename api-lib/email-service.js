@@ -91,6 +91,13 @@ function sendResendHttpRequest({ apiKey, from, to, replyTo, subject, html }) {
       });
     });
 
+    // Strict socket timeout to avoid indefinite hanging
+    req.setTimeout(5000, () => {
+      console.warn("[EMAIL SERVICE] Resend HTTPS request timed out after 5000ms");
+      req.destroy(new Error("Resend request timed out"));
+      resolve({ ok: false, error: "Resend request timed out" });
+    });
+
     req.on("error", (err) => {
       console.error("[EMAIL SERVICE HTTPS ERROR]", err.message);
       resolve({ ok: false, error: err.message });
@@ -495,7 +502,7 @@ export async function sendAdminEmailNotification({
           event_type: type,
           reference_id: referenceId,
           recipient_email: adminEmail,
-          email_subject: subject,
+          subject: subject,
           status: deliveryStatus,
           error_message: errorMessage,
           idempotency_key: idempotencyKey,

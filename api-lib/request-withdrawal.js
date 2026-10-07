@@ -176,23 +176,33 @@ export default async function handler(req, res) {
     });
     const approvalTokenUrl = `${appUrl}/api/admin/approve-withdrawal?token=${encodeURIComponent(approvalToken)}`;
 
-    const emailResult = await sendAdminEmailNotification({
-      type: "WITHDRAWAL_REQUEST",
-      referenceId: transaction.id,
-      userId: user.id,
-      metadata: {
-        amount: withdrawalAmount,
-        payment_method: paymentMethod,
-        payment_info: paymentInfo || paymentMethod,
-        phone: userPhone,
-        bank_name: bankName,
-        account_number: accountNumber,
-        account_holder_name: accountHolderName,
-      },
-      idempotencyKey,
-      supabaseAdmin,
-      approvalTokenUrl
-    });
+    // Fire email notification with safe timeout so email delivery latency/failure never hangs the withdrawal response
+    let emailResult = null;
+    try {
+      emailResult = await Promise.race([
+        sendAdminEmailNotification({
+          type: "WITHDRAWAL_REQUEST",
+          referenceId: transaction.id,
+          userId: user.id,
+          metadata: {
+            amount: withdrawalAmount,
+            payment_method: paymentMethod,
+            payment_info: paymentInfo || paymentMethod,
+            phone: userPhone,
+            bank_name: bankName,
+            account_number: accountNumber,
+            account_holder_name: accountHolderName,
+          },
+          idempotencyKey,
+          supabaseAdmin,
+          approvalTokenUrl
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Admin email dispatch timed out (4s)")), 4000))
+      ]);
+    } catch (emailErr) {
+      console.warn("[WITHDRAWAL] Admin email dispatch deferred or timed out:", emailErr.message);
+      emailResult = { success: false, status: "deferred_or_timed_out", error: emailErr.message };
+    }
 
     return res.status(200).json({
       ok: true,

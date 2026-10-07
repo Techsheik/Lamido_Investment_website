@@ -44,11 +44,12 @@ export async function verifyAdmin(req, supabaseAdmin) {
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY || // Vite projects use this name
     "";
 
-  if (!anonKey) {
-    return { adminUserId: null, error: { status: 500, message: "Server misconfiguration: missing Supabase anon key" } };
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  if (!anonKey || !supabaseUrl) {
+    return { adminUserId: null, error: { status: 500, message: "Server misconfiguration: missing Supabase credentials" } };
   }
 
-  const supabaseAnon = createClient(process.env.SUPABASE_URL, anonKey);
+  const supabaseAnon = createClient(supabaseUrl, anonKey);
 
   const { data: { user }, error: jwtError } = await supabaseAnon.auth.getUser(jwt);
   if (jwtError || !user) {
@@ -103,11 +104,12 @@ export async function verifyUser(req) {
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     "";
 
-  if (!anonKey || !process.env.SUPABASE_URL) {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  if (!anonKey || !supabaseUrl) {
     return { user: null, error: { status: 500, message: "Server misconfiguration: missing Supabase credentials" } };
   }
 
-  const supabaseAnon = createClient(process.env.SUPABASE_URL, anonKey);
+  const supabaseAnon = createClient(supabaseUrl, anonKey);
   const { data: { user }, error: jwtError } = await supabaseAnon.auth.getUser(jwt);
 
   if (jwtError || !user) {

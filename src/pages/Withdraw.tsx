@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,14 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Coins } from "lucide-react";
+import { Coins, Loader2 } from "lucide-react";
 import { formatUSD, formatNGN } from "@/lib/currency";
 
 const Withdraw = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -231,6 +232,10 @@ const Withdraw = () => {
         throw new Error("Authentication session expired. Please log in again.");
       }
 
+      // 15-second AbortController timeout to guarantee the client never hangs indefinitely
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch("/api/request-withdrawal", {
         method: "POST",
         headers: {
@@ -242,7 +247,9 @@ const Withdraw = () => {
           paymentMethod,
           paymentInfo: paymentMethod,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const resData = await res.json();
       if (!res.ok) {
@@ -254,14 +261,23 @@ const Withdraw = () => {
         description: "Your withdrawal request has been submitted. The admin will process your request shortly, and your account will be credited with the requested amount using the account number provided in your profile.",
       });
 
+      // Invalidate relevant React Query caches so UI updates immediately
+      queryClient.invalidateQueries({ queryKey: ["pending-withdrawals"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
+
       setIsOpen(false);
       setAmount("");
       setPaymentMethod("");
     } catch (error: any) {
       console.error("Withdrawal request error:", error);
+      const isTimeout = error.name === "AbortError";
       toast({
-        title: "Error",
-        description: error.message || "Failed to submit withdrawal request. Please try again.",
+        title: isTimeout ? "Request Timed Out" : "Error",
+        description: isTimeout
+          ? "The server took too long to respond. Please check your internet connection or check your transactions history to confirm."
+          : error.message || "Failed to submit withdrawal request. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -392,7 +408,7 @@ const Withdraw = () => {
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
                 <Button className="w-full md:w-auto" disabled={!canWithdraw() || totalAccruedReturn <= 0 || totalPendingWithdrawals > 0 || hasActiveInvestment}>
-                  {hasActiveInvestment ? "Withdrawals Locked (Active Cycle)" : totalPendingWithdrawals > 0 ? "Withdrawal Pending Review..." : "Request Withdrawal"}
+                  {hasActiveInvestment ? "Withdrawals Locked (Active Cycle)" : totalPendingWithdrawals > 0 ? "Withdrawal Pending Admin Review" : "Request Withdrawal"}
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -490,7 +506,8 @@ const Withdraw = () => {
                     </div>
                   )}
 
-                  <Button type="submit" className="w-full" disabled={submitting || !hasCompleteProfile}>
+                  <Button type="submit" className="w-full flex items-center justify-center gap-2" disabled={submitting || !hasCompleteProfile}>
+                    {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                     {submitting ? "Submitting Request..." : "Submit Withdrawal Request"}
                   </Button>
                 </form>
