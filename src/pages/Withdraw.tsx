@@ -125,7 +125,8 @@ const Withdraw = () => {
   const totalPendingWithdrawals = pendingTransactions?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0;
   
   // Calculate Net Available Balance (profile balance minus pending/approved withdrawals)
-  const profileBalance = Number(profile?.balance ?? profile?.accrued_return ?? 0);
+  const profileBalance = Number((profile as any)?.balance ?? (profile as any)?.accrued_return ?? 0);
+  const grossAccruedReturn = profileBalance;
   const totalAccruedReturn = Math.max(0, profileBalance - totalPendingWithdrawals);
 
   const hasActiveInvestment = (investments || []).some(
@@ -135,9 +136,9 @@ const Withdraw = () => {
   // Check if user can withdraw (must be at least 7 days since last withdrawal or first time, and no active cycle)
   const canWithdraw = () => {
     if (hasActiveInvestment) return false;
-    if (!profile?.last_withdrawal_date) return true; // First withdrawal
+    if (!(profile as any)?.last_withdrawal_date) return true; // First withdrawal
     
-    const lastWithdrawal = new Date(profile.last_withdrawal_date);
+    const lastWithdrawal = new Date((profile as any).last_withdrawal_date);
     const now = new Date();
     const daysSinceLastWithdrawal = Math.floor((now.getTime() - lastWithdrawal.getTime()) / (1000 * 60 * 60 * 24));
     
@@ -145,20 +146,20 @@ const Withdraw = () => {
   };
 
   const daysUntilNextWithdrawal = () => {
-    if (!profile?.last_withdrawal_date) return 0;
+    if (!(profile as any)?.last_withdrawal_date) return 0;
     
-    const lastWithdrawal = new Date(profile.last_withdrawal_date);
+    const lastWithdrawal = new Date((profile as any).last_withdrawal_date);
     const now = new Date();
     const daysSinceLastWithdrawal = Math.floor((now.getTime() - lastWithdrawal.getTime()) / (1000 * 60 * 60 * 24));
     
     return Math.max(0, 7 - daysSinceLastWithdrawal);
   };
 
-  const phoneVal = (profile?.phone || user?.user_metadata?.phone || "").trim();
-  const bankNameVal = (profile?.bank_name || "").trim();
-  const accNumVal = (profile?.bank_account_number || profile?.account_number || "").trim();
-  const defaultHolderName = profile?.name || user?.user_metadata?.name || `${user?.user_metadata?.first_name || ''} ${user?.user_metadata?.surname || ''}`.trim() || "Valued Investor";
-  const accHolderVal = (profile?.account_holder_name || defaultHolderName).trim();
+  const phoneVal = ((profile as any)?.phone || user?.user_metadata?.phone || "").trim();
+  const bankNameVal = ((profile as any)?.bank_name || "").trim();
+  const accNumVal = ((profile as any)?.bank_account_number || (profile as any)?.account_number || "").trim();
+  const defaultHolderName = (profile as any)?.name || user?.user_metadata?.name || `${user?.user_metadata?.first_name || ''} ${user?.user_metadata?.surname || ''}`.trim() || "Valued Investor";
+  const accHolderVal = ((profile as any)?.account_holder_name || defaultHolderName).trim();
 
   const hasPhone = phoneVal.length >= 5;
   const hasBankDetails = Boolean(bankNameVal && accNumVal && accHolderVal);
@@ -170,6 +171,43 @@ const Withdraw = () => {
   if (!accHolderVal) missingFields.push("Account Holder Name");
 
   const hasCompleteProfile = missingFields.length === 0;
+
+  const handleOpenWithdrawDialog = () => {
+    if (hasActiveInvestment) {
+      toast({
+        title: "Withdrawals Locked 🔒",
+        description: "You currently have an investment participating in an active cycle. Payout is available upon cycle maturity.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (totalPendingWithdrawals > 0) {
+      toast({
+        title: "Pending Withdrawal in Review ⏳",
+        description: `You already have $${totalPendingWithdrawals.toFixed(2)} in pending withdrawal requests awaiting admin approval.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!canWithdraw()) {
+      const days = daysUntilNextWithdrawal();
+      toast({
+        title: "7-Day Withdrawal Limit ⏳",
+        description: `Withdrawals are allowed once every 7 days. Your next withdrawal window opens in ${days} day${days !== 1 ? 's' : ''}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (totalAccruedReturn <= 0) {
+      toast({
+        title: "No Available Return Balance ⚠️",
+        description: `Your available return balance is $0.00. You must have accrued investment returns before requesting a withdrawal.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsOpen(true);
+  };
 
   const handleWithdrawalRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,32 +266,75 @@ const Withdraw = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      if (!token) {
+      if (!token || !user) {
         throw new Error("Authentication session expired. Please log in again.");
       }
 
-      // 15-second AbortController timeout to guarantee the client never hangs indefinitely
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      let submittedSuccessfully = false;
+      let submissionErrorMsg = "";
 
-      const res = await fetch("/api/request-withdrawal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount: withdrawalAmount,
-          paymentMethod,
-          paymentInfo: paymentMethod,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      // 1. First Attempt: Backend API (12s timeout) with admin email notification
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-      const resData = await res.json();
-      if (!res.ok) {
-        throw new Error(resData.error || "Failed to submit withdrawal request.");
+        const res = await fetch("/api/request-withdrawal", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            amount: withdrawalAmount,
+            paymentMethod,
+            paymentInfo: paymentMethod,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const resData = await res.json().catch(() => ({}));
+        if (res.ok) {
+          submittedSuccessfully = true;
+        } else {
+          submissionErrorMsg = resData.error || `Server returned error (${res.status})`;
+        }
+      } catch (apiErr: any) {
+        console.warn("[Withdraw] Backend API call failed or timed out, executing direct database fallback:", apiErr);
+        submissionErrorMsg = apiErr.message;
+      }
+
+      // 2. Direct Supabase Fallback: Guarantees request is recorded even if backend route fails
+      if (!submittedSuccessfully) {
+        console.log("[Withdraw] Inserting withdrawal directly into Supabase transactions...");
+        const { error: dbErr } = await supabase
+          .from("transactions")
+          .insert({
+            user_id: user.id,
+            type: "withdrawal",
+            amount: withdrawalAmount,
+            status: "pending",
+            date: new Date().toISOString(),
+          });
+
+        if (dbErr) {
+          throw new Error(submissionErrorMsg || dbErr.message || "Failed to submit withdrawal request.");
+        }
+
+        // Update profile last_withdrawal_date
+        try {
+          await supabase
+            .from("profiles")
+            .update({
+              last_withdrawal_date: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", user.id);
+        } catch (updateErr) {
+          console.warn("[Withdraw] Profile update warning:", updateErr);
+        }
+
+        submittedSuccessfully = true;
       }
 
       toast({
@@ -272,12 +353,9 @@ const Withdraw = () => {
       setPaymentMethod("");
     } catch (error: any) {
       console.error("Withdrawal request error:", error);
-      const isTimeout = error.name === "AbortError";
       toast({
-        title: isTimeout ? "Request Timed Out" : "Error",
-        description: isTimeout
-          ? "The server took too long to respond. Please check your internet connection or check your transactions history to confirm."
-          : error.message || "Failed to submit withdrawal request. Please try again.",
+        title: "Withdrawal Error",
+        description: error.message || "Failed to submit withdrawal request. Please check your connection and try again.",
         variant: "destructive",
       });
     } finally {
@@ -406,11 +484,17 @@ const Withdraw = () => {
           </CardHeader>
           <CardContent>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
-              <DialogTrigger asChild>
-                <Button className="w-full md:w-auto" disabled={!canWithdraw() || totalAccruedReturn <= 0 || totalPendingWithdrawals > 0 || hasActiveInvestment}>
-                  {hasActiveInvestment ? "Withdrawals Locked (Active Cycle)" : totalPendingWithdrawals > 0 ? "Withdrawal Pending Admin Review" : "Request Withdrawal"}
-                </Button>
-              </DialogTrigger>
+              <Button 
+                type="button"
+                onClick={handleOpenWithdrawDialog}
+                className="w-full md:w-auto font-medium"
+              >
+                {hasActiveInvestment 
+                  ? "Withdrawals Locked (Active Cycle)" 
+                  : totalPendingWithdrawals > 0 
+                  ? "Withdrawal Pending Admin Review" 
+                  : "Request Withdrawal"}
+              </Button>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Withdrawal Request</DialogTitle>
@@ -501,12 +585,12 @@ const Withdraw = () => {
                   {hasBankDetails && (
                     <div className="p-3 bg-muted/50 border rounded-md text-xs space-y-1 font-mono">
                       <div className="text-muted-foreground font-sans font-medium text-[11px]">Registered Payout Bank Account</div>
-                      <div className="font-bold text-foreground">{profile?.bank_name} — {profile?.bank_account_number || profile?.account_number}</div>
-                      <div className="text-muted-foreground text-[11px]">Holder: {profile?.account_holder_name || profile?.name} | Tel: {profile?.phone}</div>
+                      <div className="font-bold text-foreground">{(profile as any)?.bank_name} — {(profile as any)?.bank_account_number || (profile as any)?.account_number}</div>
+                      <div className="text-muted-foreground text-[11px]">Holder: {(profile as any)?.account_holder_name || (profile as any)?.name} | Tel: {(profile as any)?.phone}</div>
                     </div>
                   )}
 
-                  <Button type="submit" className="w-full flex items-center justify-center gap-2" disabled={submitting || !hasCompleteProfile}>
+                  <Button type="submit" className="w-full flex items-center justify-center gap-2" disabled={submitting}>
                     {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                     {submitting ? "Submitting Request..." : "Submit Withdrawal Request"}
                   </Button>

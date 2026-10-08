@@ -19,12 +19,20 @@ export default async function handler(req, res) {
 
   try {
     // 1. Server-Side Authentication
-    const { user, error: authErr } = await verifyUser(req);
+    const { user, error: authErr } = await verifyUser(req, supabaseAdmin);
     if (authErr || !user) {
       return res.status(authErr?.status || 401).json({ error: authErr?.message || "Unauthorized" });
     }
 
-    const { amount, paymentMethod, paymentInfo } = req.body || {};
+    // Defensively parse body if received as string or Buffer
+    let body = req.body;
+    if (typeof body === "string") {
+      try { body = JSON.parse(body); } catch (e) {}
+    } else if (Buffer.isBuffer(body)) {
+      try { body = JSON.parse(body.toString("utf8")); } catch (e) {}
+    }
+
+    const { amount, paymentMethod, paymentInfo } = body || {};
     const withdrawalAmount = parseFloat(amount);
 
     // 2. Input Validation (positive number)

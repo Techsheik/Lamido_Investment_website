@@ -37,21 +37,21 @@ export async function verifyAdmin(req, supabaseAdmin) {
     };
   }
 
-  // 2. Verify JWT with Supabase (using anon-key client to validate the token)
-  const anonKey =
+  // 2. Verify JWT with Supabase
+  const keyToUse =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY || // Vite projects use this name
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     "";
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  if (!anonKey || !supabaseUrl) {
+  if (!keyToUse || !supabaseUrl) {
     return { adminUserId: null, error: { status: 500, message: "Server misconfiguration: missing Supabase credentials" } };
   }
 
-  const supabaseAnon = createClient(supabaseUrl, anonKey);
-
-  const { data: { user }, error: jwtError } = await supabaseAnon.auth.getUser(jwt);
+  const client = supabaseAdmin || createClient(supabaseUrl, keyToUse);
+  const { data: { user }, error: jwtError } = await client.auth.getUser(jwt);
   if (jwtError || !user) {
     return {
       adminUserId: null,
@@ -81,7 +81,7 @@ export async function verifyAdmin(req, supabaseAdmin) {
  * @param {import("http").IncomingMessage} req
  * @returns {Promise<{ user: import("@supabase/supabase-js").User|null, error: { status: number, message: string }|null }>}
  */
-export async function verifyUser(req) {
+export async function verifyUser(req, supabaseAdmin = null) {
   const authHeader = req.headers?.authorization || req.headers?.Authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return {
@@ -98,19 +98,20 @@ export async function verifyUser(req) {
     };
   }
 
-  const anonKey =
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const keyToUse =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     "";
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  if (!anonKey || !supabaseUrl) {
+  if (!keyToUse || !supabaseUrl) {
     return { user: null, error: { status: 500, message: "Server misconfiguration: missing Supabase credentials" } };
   }
 
-  const supabaseAnon = createClient(supabaseUrl, anonKey);
-  const { data: { user }, error: jwtError } = await supabaseAnon.auth.getUser(jwt);
+  const client = supabaseAdmin || createClient(supabaseUrl, keyToUse);
+  const { data: { user }, error: jwtError } = await client.auth.getUser(jwt);
 
   if (jwtError || !user) {
     return {
